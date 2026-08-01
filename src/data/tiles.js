@@ -6,6 +6,7 @@ export const TILE_DEFINITIONS = [
   { id: "stone", name: "Stone", solid: true, platform: false, liquid: false, damaging: false, breakable: true, hardness: 48, requiredTool: "pickaxe", minimumToolPower: 1, dropTable: [{ itemId: "stone", min: 1, max: 2 }], renderStyle: { color: "#777c82", edge: "#555a60" } },
   { id: "copper_ore", name: "Copper Ore", solid: true, platform: false, liquid: false, damaging: false, breakable: true, hardness: 58, requiredTool: "pickaxe", minimumToolPower: 1, dropTable: [{ itemId: "copper_ore", min: 1, max: 2 }], renderStyle: { color: "#9c6a45", edge: "#d68a4d" } },
   { id: "iron_ore", name: "Iron Ore", solid: true, platform: false, liquid: false, damaging: false, breakable: true, hardness: 72, requiredTool: "pickaxe", minimumToolPower: 1, dropTable: [{ itemId: "iron_ore", min: 1, max: 2 }], renderStyle: { color: "#6f7477", edge: "#aeb7bb" } },
+  { id: "bedrock", name: "Bedrock", solid: true, platform: false, liquid: false, damaging: false, breakable: false, hardness: 9999, renderStyle: { color: "#2f3438", edge: "#1d2124" } },
   { id: "wood_foundation_tile", name: "Wood Foundation", solid: true, platform: false, liquid: false, damaging: false, breakable: true, renderStyle: { color: "#9b6b38", edge: "#5f3d22" } },
   { id: "wood_wall_tile", name: "Wood Wall", solid: true, platform: false, liquid: false, damaging: false, breakable: true, renderStyle: { color: "#8b582d", edge: "#553319" } }
 ];

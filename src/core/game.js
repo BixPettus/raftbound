@@ -177,6 +177,7 @@ export class Game {
     this.encounterCount = save.voyage.encounterCount ?? 0;
     this.raft = new Raft(save.raft);
     const island = restoreIsland(save.voyage.currentIsland);
+    if (save.voyage.currentIsland && !island) this.saveError = "Legacy island discarded for Generation V3 migration. Persistent raft and player progress were preserved.";
     if (island) this.raft.setDock(island.raftDockTile.tileX, island.raftDockTile.tileY);
     else this.raft.setDock(8, CONFIG.SEA_LEVEL_TILE + CONFIG.RAFT_WATERLINE_TILE_OFFSET);
     this.world = new World({ raft: this.raft, island });

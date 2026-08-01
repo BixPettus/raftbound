@@ -9,6 +9,7 @@ export class TileMap {
     this.defaultTile = defaultTile;
     this.seaLevelTile = seaLevelTile;
     this.tiles = new Array(width * height).fill(defaultTile);
+    this.waterMask = null;
     this.modifiedTiles = new Map();
   }
 
@@ -37,9 +38,19 @@ export class TileMap {
   }
 
   isWaterTile(tileX, tileY) {
+    if (!this.inBounds(tileX, tileY)) return false;
+    if (this.waterMask) return this.waterMask[this.index(tileX, tileY)] === 1;
     const tileId = this.getTile(tileX, tileY);
     const tile = getTileDefinition(tileId);
     return tile.liquid || (tileY >= this.seaLevelTile && !tile.solid);
+  }
+
+  setWaterMask(waterMask) {
+    this.waterMask = waterMask;
+  }
+
+  waterAt(tileX, tileY) {
+    return this.isWaterTile(tileX, tileY);
   }
 
   isHazardTile(tileX, tileY) {

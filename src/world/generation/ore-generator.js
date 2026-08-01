@@ -15,7 +15,7 @@ export function placeOres(context) {
 
 function pickOreCenter(context, random, profile) {
   for (let attempts = 0; attempts < 80; attempts += 1) {
-    const x = random.int(context.profile.startX + 20, context.definition.width - context.profile.endMargin - 18);
+    const x = random.int(context.profile.startX + context.recipe.edgeProfiles.arrival.width + 12, context.definition.width - context.profile.endMargin - context.recipe.edgeProfiles.far.width - 12);
     const surfaceY = context.surfaceHeights[x];
     const y = random.int(surfaceY + 6, context.definition.height - 6);
     const ratio = context.depthBands[contextIndex(context, x, y)];

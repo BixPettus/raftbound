@@ -4,7 +4,24 @@ export function buildGenerationReport(context, validation, { usedFallback = fals
     seed: context.definition.seed,
     biome: context.definition.biome,
     size: context.definition.size,
+    catalogVersion: context.definition.catalogVersion,
     generationVersion: context.definition.generationVersion,
+    recipeHash: context.definition.recipeHash,
+    templateId: context.definition.templateId,
+    templateName: context.definition.templateName,
+    archetypeId: context.definition.archetypeId,
+    generationRating: context.recipe.generationRating,
+    levelRating: context.recipe.level.rating,
+    minimumAccessLevel: context.recipe.level.minimumAccessLevel,
+    dangerScore: context.recipe.danger.finalScore,
+    dangerTier: context.recipe.danger.tier,
+    dangerBreakdown: context.recipe.danger,
+    biomeRegions: context.recipe.biomeRegions,
+    edgeProfiles: {
+      arrival: context.recipe.edges.arrival,
+      far: context.recipe.edges.far
+    },
+    specialAttributes: context.recipe.specialAttributes,
     selectedAttempt: context.diagnostics.attempt,
     usedFallback,
     width: context.definition.width,
@@ -28,9 +45,27 @@ export function buildGenerationReport(context, validation, { usedFallback = fals
     resourceCounts: metrics.resourceCounts ?? {},
     oreCounts: metrics.oreCounts ?? {},
     enemyCount: metrics.enemyCount,
+    enemySpawnBudget: context.diagnostics.enemySpawn?.budget ?? 0,
+    enemySpawnBudgetUsed: context.diagnostics.enemySpawn?.used ?? 0,
+    enemySpawnBudgetRemaining: context.diagnostics.enemySpawn?.remaining ?? 0,
+    enemyCountsByType: context.diagnostics.enemySpawn?.countsByType ?? {},
+    enemyLevels: context.enemies.map((enemy) => enemy.level),
+    realizedThreat: realizedThreat(context),
     stageTimingsMs: context.diagnostics.stageTimingsMs,
     totalGenerationMs: elapsedMs,
     validationFailures: validation.failures ?? []
+  };
+}
+
+function realizedThreat(context) {
+  const enemyThreatTotal = context.enemies.reduce((sum, enemy) => sum + (enemy.threatCost ?? 0), 0);
+  const enemyLevels = context.enemies.map((enemy) => enemy.level ?? 1);
+  return {
+    enemyThreatTotal,
+    hazardThreatTotal: 0,
+    enemyCount: context.enemies.length,
+    averageEnemyLevel: enemyLevels.length ? Number((enemyLevels.reduce((sum, level) => sum + level, 0) / enemyLevels.length).toFixed(2)) : 0,
+    highestEnemyLevel: enemyLevels.length ? Math.max(...enemyLevels) : 0
   };
 }
 

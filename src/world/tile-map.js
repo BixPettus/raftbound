@@ -1,4 +1,4 @@
-import { CONFIG } from "../config.js?v=terrain-inventory-4";
+import { CONFIG } from "../config.js?v=wp4-catalog-1";
 import { getTileDefinition } from "./tile-registry.js";
 import { tileKey, worldToTile } from "./coordinates.js";
 

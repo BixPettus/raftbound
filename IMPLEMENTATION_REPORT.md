@@ -157,3 +157,111 @@ Save version: unchanged at `2`
 - Full biome implementation remains out of scope; only temperate V3 is tuned.
 - Traversal validation is conservative and abstract rather than a full reproduction of runtime physics.
 - Debug visualisation is exposed through diagnostics/report data, not a full in-game toggleable overlay.
+
+## Work Package 4 Update
+
+Branch: `codex/island-catalog-encounter-foundation`
+
+Base SHA: `eaf20e606ec8214f0f7bd770a27232543e3d497e`
+
+Generation version: `3 -> 4`
+
+Save version: `2 -> 3`
+
+Island catalog version: `1`
+
+### Baseline
+
+- Existing unit-test count: `42`
+- Existing generation matrix: `300` islands, fallback count `0`, p95 `107.69 ms`, p99 `125.07 ms`, max `163.52 ms`
+
+### Catalog Architecture
+
+- Added source catalog data under `src/data/world/`.
+- Added runtime catalog modules under `src/world/catalog/`.
+- Added archetypes, templates, complete biome schemas, edge profiles, special attributes, danger tiers, enemy definitions and enemy spawn tables.
+- Initial natural templates: `temperate_haven`, `temperate_caverns`.
+- Placeholder templates/biomes exist for future desert, jungle and volcanic work, but natural encounter rolls exclude incomplete content.
+
+### Recipe Compiler
+
+- Generation now consumes a compiled island recipe carrying template identity, catalog version, biome regions, edge profiles, special attributes, generation modifiers, enemy spawn plan and `recipeHash`.
+- Compatibility callers may still pass `seed`, `biome`, `size` and optional `templateId`; these are compiled into a recipe before generation.
+- Recipe hashes are deterministic and exclude runtime diagnostics.
+
+### Danger And Level
+
+- Biome danger formula: `environment * 0.30 + hostility * 0.35 + navigation * 0.20 + scarcity * 0.15`.
+- Multi-biome danger starts from the arithmetic mean of distinct biome scores, then applies archetype, special-attribute and template modifiers.
+- Danger tiers are derived centrally: Safe, Low, Moderate, High, Extreme.
+- Level rating and minimum access level are authored independently from danger.
+
+Examples:
+
+- `temperate_haven`: danger `1.6`, tier `Safe`, level `1`.
+- `temperate_caverns`: danger `22.6`, tier `Low`, level `2`.
+
+### Edges And Sand
+
+- Added the `sandy_beach` edge profile plus placeholder future edge profiles.
+- Enabled WP4 templates use sandy arrival and far edges.
+- Added edge shaping before strata fill.
+- Arrival repair now uses compiled edge materials instead of hard-coded grass/dirt/stone.
+- Added `sand`, `sandstone` and `sand_block`. Sand mines to `sand_block`; sandstone currently drops `stone`.
+
+### Enemies
+
+- Added enemy data registry, factory and spawn-budget system.
+- Shore Crawler runtime stats now come from `enemy-definitions.js`.
+- Spawn tables separate `weight`, `density`, count bounds and budget.
+- Generation reports include enemy budgets, counts by type, enemy levels and realised threat.
+
+### Encounters And Debug Compass
+
+- Natural encounters now roll templates through `rollIslandEncounter`.
+- Voyage saves persist `voyageSeed`, `encounterRollIndex`, `debugRollIndex` and progression.
+- Encounter UI displays island type, size, generation rating, level, danger, biomes, attributes, template ID, recipe hash, seed and catalog version.
+- Added development-only `debug_compass` / Surveyor's Compass, granted on new development voyages.
+- Compass rolls debug encounters while sailing, replaces pending encounters, increments only `debugRollIndex`, and does not abandon anchored islands.
+- Development helper: `window.__RAFTBOUND_COMPASS__.setOptions(...)` and `.setLevel(...)`.
+- Production safeguards strip/reject development-only inventory items when `CONFIG.DEVELOPMENT_MODE` is false.
+
+### Migration
+
+- Save V2 and older saves migrate to V3 with level-1 progression, new voyage seed and zeroed roll indices.
+- Active Generation V3 islands are discarded rather than mapped to catalog templates.
+- Player, inventory, hotbar, raft, raft blocks, storage, distance and encounter count are preserved.
+
+### Validation
+
+- `npm test`: `42 checks passed`
+- `npm run test:catalog`: `catalog validation passed`
+- `npm run test:generation`: `144` islands across `temperate_haven` and `temperate_caverns`; fallback count `0`; p95 `124.94 ms`; p99 `133.54 ms`; max `185.47 ms`
+- `npm run report:catalog`: `reports/island-catalog-report.json`
+
+### Browser Acceptance
+
+Local app served on `http://localhost:4175/`.
+
+Inspected:
+
+- `temperate_caverns`, medium, seed `voyage-f5d312ac-64d179a9:debug:0:temperate_caverns:medium`, recipe hash `e4b824be`
+- `temperate_haven`, small, seed `voyage-f5d312ac-64d179a9:debug:1:temperate_haven:small`, recipe hash `edbb8dd4`
+
+Confirmed:
+
+- New development voyage grants Surveyor's Compass.
+- One compass click while sailing creates one encounter with full metadata.
+- Repeated compass click replaces the pending encounter.
+- Accepting `temperate_caverns` generates an anchored island with sandy arrival beach.
+- HUD restores template ID and recipe hash after reload/continue.
+- Sail-away returns to sailing.
+- Compass works again after sail-away and uses the next debug roll index.
+- Browser warning/error log: none.
+
+### Known Limitations And WP5 Scope
+
+- Full desert, jungle and volcanic terrain production was not included.
+- Multi-biome recipes compile and validate at catalog level, but only one-biome temperate recipes are matrix validated.
+- No graphical compass filter panel yet; options are exposed through development APIs.
+- WP5 should implement desert, jungle and volcanic terrain/resource/enemy production, additional edge behavior, biome transitions beyond schema support, and richer encounter filtering.

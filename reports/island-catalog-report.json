@@ -1,0 +1,84 @@
+{
+  "catalogVersion": 1,
+  "templateCount": 4,
+  "enabledCount": 3,
+  "placeholderCount": 2,
+  "validatedCount": 2,
+  "brokenReferences": [],
+  "dangerDistribution": {
+    "Safe": 1,
+    "Low": 1,
+    "Extreme": 1,
+    "Moderate": 1
+  },
+  "levelDistribution": {
+    "1": 1,
+    "2": 1,
+    "3": 1,
+    "5": 1
+  },
+  "sizeDistribution": {
+    "small": 2,
+    "medium": 4,
+    "large": 4
+  },
+  "biomeCoverage": {
+    "temperate": 2,
+    "volcanic": 1,
+    "desert": 1,
+    "jungle": 1
+  },
+  "enemyCoverage": [
+    {
+      "id": "temperate_enemies",
+      "implemented": true,
+      "entries": 2
+    },
+    {
+      "id": "desert_enemies",
+      "implemented": false,
+      "entries": 1
+    },
+    {
+      "id": "jungle_enemies",
+      "implemented": false,
+      "entries": 1
+    },
+    {
+      "id": "volcanic_enemies",
+      "implemented": false,
+      "entries": 1
+    }
+  ],
+  "edgeProfileCoverage": [
+    {
+      "id": "sandy_beach",
+      "implemented": true
+    },
+    {
+      "id": "rocky_shore",
+      "implemented": false
+    },
+    {
+      "id": "mangrove_edge",
+      "implemented": false
+    },
+    {
+      "id": "basalt_cliff",
+      "implemented": false
+    },
+    {
+      "id": "marsh_edge",
+      "implemented": false
+    },
+    {
+      "id": "ice_shelf",
+      "implemented": false
+    }
+  ],
+  "naturalTemplateIds": [
+    "temperate_haven",
+    "temperate_caverns"
+  ],
+  "suggestedValidationGrade": "validated"
+}

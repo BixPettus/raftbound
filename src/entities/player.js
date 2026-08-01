@@ -1,6 +1,6 @@
-import { CONFIG } from "../config.js?v=terrain-inventory-4";
+import { CONFIG } from "../config.js?v=wp4-catalog-1";
 import { Entity } from "./entity.js";
-import { moveWithCollision } from "../core/physics.js?v=terrain-inventory-4";
+import { moveWithCollision } from "../core/physics.js?v=wp4-catalog-1";
 import { Inventory } from "../items/inventory.js";
 import { Hotbar } from "../items/hotbar.js";
 import { PlayerInventory } from "../items/player-inventory.js";
@@ -36,6 +36,7 @@ export class Player extends Entity {
     player.hotbar.slots[1] = { itemId: "basic_pickaxe", quantity: 1 };
     player.hotbar.slots[2] = { itemId: "building_hammer", quantity: 1 };
     player.hotbar.slots[3] = { itemId: "wooden_spear", quantity: 1 };
+    if (CONFIG.DEVELOPMENT_MODE) player.hotbar.slots[8] = { itemId: "debug_compass", quantity: 1 };
     return player;
   }
 

@@ -107,7 +107,10 @@ export class Inventory {
 function normalizeSlots(size, slots) {
   const normalized = Array.from({ length: size }, (_, index) => {
     const slot = slots[index];
-    return slot?.itemId && Number.isFinite(slot.quantity) ? { itemId: slot.itemId, quantity: slot.quantity } : null;
+    if (!slot?.itemId || !Number.isFinite(slot.quantity)) return null;
+    const item = getItemDefinition(slot.itemId);
+    if (item.developmentOnly && !CONFIG.DEVELOPMENT_MODE) return null;
+    return { itemId: slot.itemId, quantity: slot.quantity };
   });
   return normalized;
 }

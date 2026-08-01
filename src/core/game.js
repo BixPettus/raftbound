@@ -1,17 +1,17 @@
-import { CONFIG, encounterDelay, encounterInterval } from "../config.js?v=terrain-inventory-4";
+import { CONFIG, encounterDelay, encounterInterval } from "../config.js?v=wp4-catalog-1";
 import { Camera } from "./camera.js";
 import { GAME_STATES, GameStateController } from "./game-state.js";
 import { GameClock } from "./game-clock.js";
-import { Input } from "./input.js?v=terrain-inventory-4";
-import { Renderer } from "./renderer.js?v=terrain-inventory-4";
+import { Input } from "./input.js?v=wp4-catalog-1";
+import { Renderer } from "./renderer.js?v=wp4-catalog-1";
 import { EventBus } from "./event-bus.js";
-import { World } from "../world/world.js?v=terrain-inventory-4";
-import { generateIsland, restoreIsland, serializeIsland } from "../world/island-generator.js?v=terrain-inventory-4";
-import { SeededRandom } from "../world/seeded-random.js";
-import { chooseBiome, getBiomeDefinition } from "../world/biome-registry.js";
-import { Raft } from "../raft/raft.js?v=terrain-inventory-4";
+import { World } from "../world/world.js?v=wp4-catalog-1";
+import { generateIsland, restoreIsland, serializeIsland } from "../world/island-generator.js?v=wp4-catalog-1";
+import { getBiomeDefinition } from "../world/biome-registry.js";
+import { restorePendingEncounter, rollIslandEncounter } from "../world/catalog/encounter-roller.js";
+import { Raft } from "../raft/raft.js?v=wp4-catalog-1";
 import { BuildingSystem } from "../raft/building-system.js";
-import { Player } from "../entities/player.js?v=terrain-inventory-4";
+import { Player } from "../entities/player.js?v=wp4-catalog-1";
 import { distanceBetween } from "../entities/entity.js";
 import { getItemDefinition } from "../items/item-registry.js";
 import { getRecipe } from "../items/recipe-registry.js";
@@ -22,10 +22,10 @@ import { TargetResolver } from "../world/target-resolver.js";
 import { getActionSpec } from "../data/action-specs.js";
 import { ItemDrop } from "../entities/item-drop.js";
 import { SaveManager } from "../persistence/save-manager.js";
-import { Hud } from "../ui/hud.js";
+import { Hud } from "../ui/hud.js?v=wp4-catalog-1";
 import { MenuUI } from "../ui/menu-ui.js";
-import { InventoryUI } from "../ui/inventory-ui.js?v=terrain-inventory-4";
-import { CraftingUI } from "../ui/crafting-ui.js?v=terrain-inventory-4";
+import { InventoryUI } from "../ui/inventory-ui.js?v=wp4-catalog-1";
+import { CraftingUI } from "../ui/crafting-ui.js?v=wp4-catalog-1";
 import { EncounterUI } from "../ui/encounter-ui.js";
 import { BuildUI } from "../ui/build-ui.js";
 import { DialogUI } from "../ui/dialog-ui.js";
@@ -50,6 +50,11 @@ export class Game {
     this.createdAt = new Date().toISOString();
     this.distanceTravelled = 0;
     this.encounterCount = 0;
+    this.voyageSeed = createVoyageSeed();
+    this.encounterRollIndex = 0;
+    this.debugRollIndex = 0;
+    this.progression = { level: 1, experience: 0, unlocks: [] };
+    this.compassOptions = { includeExperimental: false, includePlaceholders: false, ignoreLevelGate: false, forcedTemplateId: null, forcedSize: null };
     this.encounterTimer = encounterDelay();
     this.pendingEncounter = null;
     this.transitionTimer = 0;
@@ -146,6 +151,10 @@ export class Game {
     this.createdAt = new Date().toISOString();
     this.distanceTravelled = 0;
     this.encounterCount = 0;
+    this.voyageSeed = createVoyageSeed();
+    this.encounterRollIndex = 0;
+    this.debugRollIndex = 0;
+    this.progression = { level: 1, experience: 0, unlocks: [] };
     this.encounterTimer = encounterDelay();
     this.pendingEncounter = null;
     this.currentBiome = null;
@@ -171,8 +180,8 @@ export class Game {
     this.ui.menu.hide();
   }
 
-  loadDebugIsland({ seed, biome = "temperate", size = "small" }) {
-    const island = generateIsland({ seed, biome, size, generationVersion: CONFIG.GENERATION_VERSION });
+  loadDebugIsland({ seed, biome = "temperate", size = "small", templateId = "temperate_haven" }) {
+    const island = generateIsland({ seed, biome, size, templateId, generationVersion: CONFIG.GENERATION_VERSION });
     this.raft = Raft.createInitial();
     this.raft.setDock(island.raftDockTile.tileX, island.raftDockTile.tileY);
     this.world = new World({ raft: this.raft, island });
@@ -197,13 +206,18 @@ export class Game {
     this.createdAt = save.createdAt;
     this.distanceTravelled = save.voyage.distanceTravelled ?? 0;
     this.encounterCount = save.voyage.encounterCount ?? 0;
+    this.voyageSeed = save.voyage.voyageSeed ?? createVoyageSeed();
+    this.encounterRollIndex = save.voyage.encounterRollIndex ?? 0;
+    this.debugRollIndex = save.voyage.debugRollIndex ?? 0;
+    this.progression = normalizeProgression(save.voyage.progression);
     this.raft = new Raft(save.raft);
     const island = restoreIsland(save.voyage.currentIsland);
-    if (save.voyage.currentIsland && !island) this.saveError = "Legacy island discarded for Generation V3 migration. Persistent raft and player progress were preserved.";
+    if (save.voyage.generationMigrationNotice) this.saveError = save.voyage.generationMigrationNotice;
+    else if (save.voyage.currentIsland && !island) this.saveError = "Active island discarded after catalog migration. Persistent raft and player progress were preserved.";
     if (island) this.raft.setDock(island.raftDockTile.tileX, island.raftDockTile.tileY);
     else this.raft.setDock(8, CONFIG.SEA_LEVEL_TILE + CONFIG.RAFT_WATERLINE_TILE_OFFSET);
     this.world = new World({ raft: this.raft, island });
-    this.currentBiome = island ? { id: island.biome, palette: { sky: "#86d5f0", water: "#2d91c9" } } : null;
+    this.currentBiome = island ? getBiomeDefinition(island.biome) : null;
     const position = save.player.position ?? this.raft.getSpawnWorldPosition();
     this.player = new Player({
       x: position.x,
@@ -218,7 +232,7 @@ export class Game {
     this.targetResolver = new TargetResolver();
     this.state = new GameStateController(island ? GAME_STATES.ISLAND_ANCHORED : GAME_STATES.SAILING);
     this.encounterTimer = encounterInterval();
-    this.pendingEncounter = null;
+    this.pendingEncounter = restorePendingEncounter(save.voyage.pendingEncounter);
     this.inventoryOpen = false;
     this.dialog = null;
     this.clock = new GameClock();
@@ -273,6 +287,7 @@ export class Game {
       else if (command.type === "interact") this.interact();
       else if (command.type === "primary_action") this.handlePrimaryAction(command);
       else if (command.type === "craft") this.executeCraft(command.recipeId);
+      else if (command.type === "debug_roll_encounter") this.debugRollEncounter();
     }
   }
 
@@ -431,31 +446,28 @@ export class Game {
     this.teleportPlayer(spawn.x, spawn.y);
     this.player.vx = 0;
     this.player.vy = 0;
-    this.currentBiome = this.acceptedEncounter.biome;
+    this.currentBiome = getBiomeDefinition(island.biome);
     this.acceptedEncounter = null;
     this.state.transition(GAME_STATES.ISLAND_ANCHORED);
     this.saveManager.save(this);
   }
 
   createEncounter() {
-    const seed = `voyage-${Date.now()}-${this.encounterCount + 1}`;
-    const random = new SeededRandom(seed);
-    const biome = chooseBiome(random);
-    const sizes = ["small", "medium", "large"];
-    this.pendingEncounter = {
-      seed,
-      biome,
-      size: sizes[random.int(0, sizes.length - 1)],
-      generationVersion: CONFIG.GENERATION_VERSION,
-      remaining: CONFIG.ENCOUNTER_RESPONSE_SECONDS
-    };
+    this.pendingEncounter = rollIslandEncounter({
+      voyageSeed: this.voyageSeed,
+      rollIndex: this.encounterRollIndex,
+      playerProgression: this.progression,
+      rollType: "natural"
+    });
+    this.encounterRollIndex += 1;
   }
 
   acceptEncounter() {
     if (!this.pendingEncounter) return;
     this.acceptedEncounter = {
       seed: this.pendingEncounter.seed,
-      biome: this.pendingEncounter.biome.id,
+      recipe: this.pendingEncounter.recipe,
+      templateId: this.pendingEncounter.templateId,
       size: this.pendingEncounter.size,
       generationVersion: this.pendingEncounter.generationVersion
     };
@@ -468,6 +480,37 @@ export class Game {
   declineEncounter() {
     this.pendingEncounter = null;
     this.encounterTimer = encounterInterval();
+  }
+
+  handleDebugCompass() {
+    if (!CONFIG.DEVELOPMENT_MODE) return;
+    if (this.state.current !== GAME_STATES.SAILING) {
+      this.contextPrompt = "Return to sailing to survey for another island.";
+      return;
+    }
+    this.enqueueCommand({ type: "debug_roll_encounter" });
+  }
+
+  debugRollEncounter() {
+    if (!CONFIG.DEVELOPMENT_MODE || this.state.current !== GAME_STATES.SAILING) return;
+    this.pendingEncounter = rollIslandEncounter({
+      voyageSeed: this.voyageSeed,
+      rollIndex: this.debugRollIndex,
+      playerProgression: this.progression,
+      debugOptions: this.compassOptions,
+      rollType: "debug"
+    });
+    this.debugRollIndex += 1;
+  }
+
+  setCompassOptions(options = {}) {
+    if (!CONFIG.DEVELOPMENT_MODE) return;
+    this.compassOptions = { ...this.compassOptions, ...options };
+  }
+
+  setDebugLevel(level) {
+    if (!CONFIG.DEVELOPMENT_MODE) return;
+    this.progression = { ...this.progression, level: Math.max(1, Math.floor(level)) };
   }
 
   updateContextPrompts() {
@@ -500,6 +543,10 @@ export class Game {
       ? getItemDefinition(this.buildingSystem.selectedStructure.itemId)
       : slot ? getItemDefinition(slot.itemId) : null;
     if (!item) return;
+    if (item.toolType === "debug_compass") {
+      this.handleDebugCompass();
+      return;
+    }
     if (item.category === "consumable" && item.heal) {
       this.startPlayerAction({
         actionType: "consume",
@@ -652,7 +699,7 @@ export class Game {
   depositBasicResources() {
     const storage = this.raft.storage.get(this.openStorageId);
     if (!storage) return;
-    for (const itemId of ["wood", "stone", "fibre", "rope", "crawler_chitin"]) {
+    for (const itemId of ["wood", "stone", "fibre", "sand_block", "rope", "crawler_chitin"]) {
       const count = this.player.items.countItem(itemId, INVENTORY_POLICIES.ALL_PLAYER_CONTAINERS);
       if (count <= 0) continue;
       const accepted = storage.addItem(itemId, count);
@@ -805,6 +852,23 @@ function actionTypeForItem(item) {
   if (item.toolType === "spear") return "spear";
   if (item.toolType === "hammer") return "build";
   return item.toolType ?? "tool";
+}
+
+function createVoyageSeed() {
+  if (globalThis.crypto?.getRandomValues) {
+    const values = new Uint32Array(2);
+    globalThis.crypto.getRandomValues(values);
+    return `voyage-${values[0].toString(16)}-${values[1].toString(16)}`;
+  }
+  return `voyage-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+}
+
+function normalizeProgression(progression) {
+  return {
+    level: Math.max(1, Math.floor(progression?.level ?? 1)),
+    experience: Math.max(0, Math.floor(progression?.experience ?? 0)),
+    unlocks: Array.isArray(progression?.unlocks) ? [...progression.unlocks] : []
+  };
 }
 
 function nearestInRange(entities, origin, range) {

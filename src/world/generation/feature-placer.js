@@ -1,5 +1,5 @@
 import { ResourceNode } from "../../entities/resource-node.js";
-import { ShoreCrawler } from "../../entities/enemy.js";
+import { spawnEnemiesForRecipe } from "../../entities/enemies/enemy-spawn-system.js";
 import { generatedFeatureId } from "../feature-id.js";
 
 export function placeFeatures(context) {
@@ -9,16 +9,17 @@ export function placeFeatures(context) {
 
 function placeResources(context) {
   const random = context.randomStreams.get("surface-resources");
-  const counts = { small: 1, medium: 1.35, large: 1.7 }[context.definition.size] ?? 1;
+  const counts = ({ small: 1, medium: 1.35, large: 1.7 }[context.definition.size] ?? 1) * (context.recipe.generationModifiers.resourceMultiplier ?? 1);
+  const beachOffset = context.recipe.edgeProfiles.arrival.width + 6;
   const guaranteed = [
-    { type: "tree", tileX: context.profile.startX + 14 },
-    { type: "surface_stone", tileX: context.profile.startX + 19 },
-    { type: "fibre_plant", tileX: context.profile.startX + 24 }
+    { type: "tree", tileX: context.profile.startX + beachOffset },
+    { type: "surface_stone", tileX: context.profile.startX + beachOffset + 5 },
+    { type: "fibre_plant", tileX: context.profile.startX + beachOffset + 10 }
   ];
   guaranteed.forEach((item) => addResource(context, item.type, item.tileX));
   for (const [type, count] of Object.entries({ tree: Math.ceil(8 * counts), surface_stone: Math.ceil(7 * counts), fibre_plant: Math.ceil(10 * counts) })) {
     for (let i = 0; i < count; i += 1) {
-      addResource(context, type, random.int(context.profile.startX + 12, context.definition.width - context.profile.endMargin - 18));
+      addResource(context, type, random.int(context.profile.startX + beachOffset, context.definition.width - context.profile.endMargin - context.recipe.edgeProfiles.far.width - 8));
     }
   }
 }
@@ -40,21 +41,5 @@ function addResource(context, type, tileX) {
 }
 
 function placeEnemies(context) {
-  const random = context.randomStreams.get("enemies");
-  const count = context.definition.size === "large" ? 3 : context.definition.size === "medium" ? 2 : 1;
-  const minX = context.profile.startX + context.profile.arrivalFlatTiles + 35;
-  const maxX = context.definition.width - context.profile.endMargin - 28;
-  for (let i = 0; i < count; i += 1) {
-    const tileX = random.int(minX, maxX);
-    const tileY = context.surfaceHeights[tileX] - 1;
-    context.enemies.push(ShoreCrawler.create(tileX, tileY, generatedFeatureId({
-      kind: "enemy",
-      generationVersion: context.definition.generationVersion,
-      islandSeed: context.definition.seed,
-      featureType: "shore-crawler",
-      tileX,
-      tileY,
-      ordinal: i
-    })));
-  }
+  spawnEnemiesForRecipe(context);
 }

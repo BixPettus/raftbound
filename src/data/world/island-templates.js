@@ -1,0 +1,74 @@
+export const ISLAND_TEMPLATES = [
+  {
+    id: "temperate_haven",
+    name: "Temperate Haven",
+    description: "A low-risk green island with accessible resources.",
+    enabled: true,
+    implementationStatus: "validated",
+    archetypeId: "standard",
+    generationRating: 2,
+    level: { rating: 1, minimumAccessLevel: 1, recommendedMinimum: 1, recommendedMaximum: 3 },
+    allowedSizes: { small: 0.55, medium: 0.35, large: 0.1 },
+    biomeSlots: [{ biomeId: "temperate", coverage: 1, role: "primary" }],
+    edges: { arrival: "sandy_beach", far: "sandy_beach" },
+    specialAttributes: ["starter_safe"],
+    encounterWeight: 50,
+    dangerModifier: -5,
+    generation: { caveProfileOverride: null, resourceMultiplier: 1, enemyBudgetMultiplier: 0.75, pointOfInterestBudget: 0 }
+  },
+  {
+    id: "temperate_caverns",
+    name: "Temperate Caverns",
+    description: "A greener island whose cave network is the main feature.",
+    enabled: true,
+    implementationStatus: "validated",
+    archetypeId: "cavernous",
+    generationRating: 3,
+    level: { rating: 2, minimumAccessLevel: 1, recommendedMinimum: 2, recommendedMaximum: 4 },
+    allowedSizes: { small: 0.25, medium: 0.5, large: 0.25 },
+    biomeSlots: [{ biomeId: "temperate", coverage: 1, role: "primary" }],
+    edges: { arrival: "sandy_beach", far: "sandy_beach" },
+    specialAttributes: ["cavernous", "resource_rich"],
+    encounterWeight: 24,
+    dangerModifier: 2,
+    generation: { caveProfileOverride: null, resourceMultiplier: 1.15, enemyBudgetMultiplier: 1, pointOfInterestBudget: 0 }
+  },
+  {
+    id: "volcanic_rift",
+    name: "Volcanic Rift",
+    description: "A late-game volcanic island placeholder.",
+    enabled: true,
+    implementationStatus: "placeholder",
+    archetypeId: "hostile",
+    generationRating: 4,
+    level: { rating: 5, minimumAccessLevel: 5, recommendedMinimum: 5, recommendedMaximum: 8 },
+    allowedSizes: { medium: 0.45, large: 0.55 },
+    biomeSlots: [{ biomeId: "volcanic", coverage: 1, role: "primary" }],
+    edges: { arrival: "sandy_beach", far: "sandy_beach" },
+    specialAttributes: [],
+    encounterWeight: 0,
+    dangerModifier: 8,
+    generation: { caveProfileOverride: null, resourceMultiplier: 0.8, enemyBudgetMultiplier: 1.5, pointOfInterestBudget: 1 }
+  },
+  {
+    id: "desert_jungle_frontier",
+    name: "Desert Jungle Frontier",
+    description: "A placeholder mixed-biome island used to validate compiler support.",
+    enabled: false,
+    implementationStatus: "placeholder",
+    archetypeId: "resource_rich",
+    generationRating: 3,
+    level: { rating: 3, minimumAccessLevel: 3, recommendedMinimum: 3, recommendedMaximum: 5 },
+    allowedSizes: { medium: 0.6, large: 0.4 },
+    biomeSlots: [
+      { biomeId: "desert", coverage: 0.45, role: "primary" },
+      { biomeId: "jungle", coverage: 0.55, role: "secondary" }
+    ],
+    edges: { arrival: "sandy_beach", far: "sandy_beach" },
+    specialAttributes: ["resource_rich"],
+    encounterWeight: 0,
+    dangerModifier: 0,
+    generation: { caveProfileOverride: null, resourceMultiplier: 1.25, enemyBudgetMultiplier: 1.1, pointOfInterestBudget: 1 }
+  }
+];
+

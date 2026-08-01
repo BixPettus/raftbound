@@ -1,9 +1,9 @@
-import { SAVE_VERSION, validateSave } from "./save-schema.js";
-import { CONFIG } from "../config.js";
+import { SAVE_VERSION, sanitizeSaveForRuntimeMode, validateSave } from "./save-schema.js";
+import { getSavedIslandCompatibility } from "../world/island-generator.js";
 
 export function migrateSave(rawSave) {
   if (rawSave?.saveVersion === SAVE_VERSION) {
-    const save = discardLegacyIsland(rawSave);
+    const save = sanitizeSaveForRuntimeMode(discardIncompatibleIsland(rawSave));
     return validateSave(save).ok ? save : null;
   }
   if (rawSave?.saveVersion === 2) {
@@ -21,7 +21,8 @@ export function migrateSave(rawSave) {
         generationMigrationNotice: "Legacy active island discarded for Generation V4 catalog migration. Persistent raft and player progress were preserved."
       }
     };
-    return validateSave(migrated).ok ? migrated : null;
+    const sanitized = sanitizeSaveForRuntimeMode(migrated);
+    return validateSave(sanitized).ok ? sanitized : null;
   }
   if (rawSave?.saveVersion === 1) {
     const oldIsland = rawSave.voyage?.currentIsland;
@@ -46,22 +47,22 @@ export function migrateSave(rawSave) {
         } : null
       }
     };
-    const compatible = discardLegacyIsland(migrated);
+    const compatible = sanitizeSaveForRuntimeMode(discardIncompatibleIsland(migrated));
     return validateSave(compatible).ok ? compatible : null;
   }
   return null;
 }
 
-function discardLegacyIsland(save) {
+function discardIncompatibleIsland(save) {
   const island = save?.voyage?.currentIsland;
-  if (!island || (island.generationVersion ?? 0) >= CONFIG.GENERATION_VERSION) return save;
+  if (!island || getSavedIslandCompatibility(island).ok) return save;
   return {
     ...save,
     voyage: {
       ...save.voyage,
       currentState: "SAILING",
       currentIsland: null,
-      generationMigrationNotice: "Legacy active island discarded for Generation V4. Persistent raft and player progress were preserved."
+      generationMigrationNotice: "Active island discarded after catalog recipe compatibility check. Persistent raft, player progress, and voyage progression were preserved."
     }
   };
 }

@@ -18,12 +18,14 @@ export const islandCatalog = Object.freeze({
   enemySpawnTables: freezeRecords(ENEMY_SPAWN_TABLES)
 });
 
-export function listIslandTemplates({ naturalOnly = false, includeExperimental = false } = {}) {
+export function listIslandTemplates({ naturalOnly = false, includeExperimental = false, includePlaceholders = false } = {}) {
   return islandCatalog.templates.filter((template) => {
     if (!naturalOnly) return true;
     if (!template.enabled || template.encounterWeight <= 0) return false;
     if (template.implementationStatus === "validated" || template.implementationStatus === "release") return true;
-    return includeExperimental && template.implementationStatus === "experimental";
+    if (template.implementationStatus === "experimental") return includeExperimental;
+    if (template.implementationStatus === "placeholder") return includePlaceholders;
+    return false;
   });
 }
 
@@ -70,4 +72,3 @@ function deepFreeze(value) {
   for (const child of Object.values(value)) deepFreeze(child);
   return Object.freeze(value);
 }
-

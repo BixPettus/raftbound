@@ -8,7 +8,7 @@ import { EventBus } from "./event-bus.js";
 import { World } from "../world/world.js?v=wp4-catalog-1";
 import { generateIsland, restoreIsland, serializeIsland } from "../world/island-generator.js?v=wp4-catalog-1";
 import { getBiomeDefinition } from "../world/biome-registry.js";
-import { rollIslandEncounter } from "../world/catalog/encounter-roller.js";
+import { restorePendingEncounter, rollIslandEncounter } from "../world/catalog/encounter-roller.js";
 import { Raft } from "../raft/raft.js?v=wp4-catalog-1";
 import { BuildingSystem } from "../raft/building-system.js";
 import { Player } from "../entities/player.js?v=wp4-catalog-1";
@@ -54,7 +54,7 @@ export class Game {
     this.encounterRollIndex = 0;
     this.debugRollIndex = 0;
     this.progression = { level: 1, experience: 0, unlocks: [] };
-    this.compassOptions = { includeExperimental: false, ignoreLevelGate: false, forcedTemplateId: null, forcedSize: null };
+    this.compassOptions = { includeExperimental: false, includePlaceholders: false, ignoreLevelGate: false, forcedTemplateId: null, forcedSize: null };
     this.encounterTimer = encounterDelay();
     this.pendingEncounter = null;
     this.transitionTimer = 0;
@@ -212,7 +212,8 @@ export class Game {
     this.progression = normalizeProgression(save.voyage.progression);
     this.raft = new Raft(save.raft);
     const island = restoreIsland(save.voyage.currentIsland);
-    if (save.voyage.currentIsland && !island) this.saveError = "Legacy island discarded for Generation V4 migration. Persistent raft and player progress were preserved.";
+    if (save.voyage.generationMigrationNotice) this.saveError = save.voyage.generationMigrationNotice;
+    else if (save.voyage.currentIsland && !island) this.saveError = "Active island discarded after catalog migration. Persistent raft and player progress were preserved.";
     if (island) this.raft.setDock(island.raftDockTile.tileX, island.raftDockTile.tileY);
     else this.raft.setDock(8, CONFIG.SEA_LEVEL_TILE + CONFIG.RAFT_WATERLINE_TILE_OFFSET);
     this.world = new World({ raft: this.raft, island });
@@ -231,7 +232,7 @@ export class Game {
     this.targetResolver = new TargetResolver();
     this.state = new GameStateController(island ? GAME_STATES.ISLAND_ANCHORED : GAME_STATES.SAILING);
     this.encounterTimer = encounterInterval();
-    this.pendingEncounter = null;
+    this.pendingEncounter = restorePendingEncounter(save.voyage.pendingEncounter);
     this.inventoryOpen = false;
     this.dialog = null;
     this.clock = new GameClock();

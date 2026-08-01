@@ -4,7 +4,7 @@ import { SeededRandom } from "../seeded-random.js";
 import { createGenerationProfile } from "../generation/generation-profile.js";
 import { calculateTemplateDanger } from "./danger-calculator.js";
 import { planBiomeRegions } from "./biome-region-planner.js";
-import { getEnemySpawnTable, getIslandArchetype, getIslandTemplate, getSpecialAttribute, getWorldBiome } from "./island-catalog.js";
+import { getEnemyDefinition, getEnemySpawnTable, getIslandArchetype, getIslandTemplate, getSpecialAttribute, getWorldBiome } from "./island-catalog.js";
 import { resolveRecipeEdges } from "./edge-profile-registry.js";
 
 export function compileIslandRecipe({ templateId = "temperate_haven", seed, size = "small", generationVersion = CONFIG.GENERATION_VERSION }) {
@@ -15,7 +15,7 @@ export function compileIslandRecipe({ templateId = "temperate_haven", seed, size
   const edgeProfiles = resolveRecipeEdges(template, random);
   const biomeRegions = planBiomeRegions({ template, profile, edgeProfiles });
   const generationModifiers = mergeGenerationModifiers(template, archetype);
-  const enemySpawnPlan = compileEnemySpawnPlan(template, size, generationModifiers);
+  const enemySpawnPlan = compileEnemySpawnPlan(template, size, generationModifiers, biomeRegions);
   const recipeCore = {
     catalogVersion: ISLAND_CATALOG_VERSION,
     generationVersion,
@@ -55,17 +55,37 @@ export function stableHash(value) {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-function compileEnemySpawnPlan(template, size, generationModifiers) {
-  const tableIds = [...new Set(template.biomeSlots.map((slot) => getWorldBiome(slot.biomeId).enemies.spawnTableId))];
+function compileEnemySpawnPlan(template, size, generationModifiers, biomeRegions) {
+  const tableIds = [];
   const entries = [];
-  let budget = 0;
-  for (const tableId of tableIds) {
+  let enemySpawnBudget = 0;
+  for (let regionIndex = 0; regionIndex < template.biomeSlots.length; regionIndex += 1) {
+    const slot = template.biomeSlots[regionIndex];
+    const region = biomeRegions[regionIndex];
+    const tableId = getWorldBiome(slot.biomeId).enemies.spawnTableId;
+    if (!tableIds.includes(tableId)) tableIds.push(tableId);
     const table = getEnemySpawnTable(tableId);
-    budget += table.budgetBySize[size] ?? 0;
-    entries.push(...table.entries.map((entry) => ({ ...entry, tableId })));
+    const baseBudget = (table.budgetBySize[size] ?? 0) * slot.coverage * (generationModifiers.enemyBudgetMultiplier ?? 1);
+    const minThreatCost = table.entries.reduce((min, entry) => Math.min(min, getEnemyDefinition(entry.enemyId).threatCost), Infinity);
+    const regionalBudget = baseBudget > 0 ? Math.max(minThreatCost, Math.round(baseBudget)) : 0;
+    enemySpawnBudget += regionalBudget;
+    entries.push(...table.entries.map((entry) => ({
+      biomeId: slot.biomeId,
+      regionIndex,
+      startX: region.startX,
+      endX: region.endX,
+      coverage: slot.coverage,
+      tableId,
+      enemyId: entry.enemyId,
+      weight: entry.weight,
+      density: entry.density,
+      regionalBudget,
+      countLimits: {
+        minCount: entry.minCount,
+        maxCount: entry.maxCountBySize[size] ?? 0
+      }
+    })));
   }
-  const scaledBudget = Math.round(budget * (generationModifiers.enemyBudgetMultiplier ?? 1));
-  const enemySpawnBudget = budget > 0 ? Math.max(2, scaledBudget) : 0;
   return { tableIds, enemySpawnBudget, entries };
 }
 

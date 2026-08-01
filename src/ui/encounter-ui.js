@@ -1,3 +1,5 @@
+import { CONFIG } from "../config.js";
+
 export class EncounterUI {
   constructor(element, game) {
     this.element = element;
@@ -30,8 +32,7 @@ export class EncounterUI {
           <p>Danger: ${encounter.danger.finalScore} - ${encounter.danger.tier}</p>
           <p>Biome: ${encounter.biomeSummary.map((biome) => biome.name).join(", ")}</p>
           <p>Attributes: ${encounter.specialAttributes.length ? encounter.specialAttributes.map((attribute) => attribute.name).join(", ") : "None"}</p>
-          <p class="dev-meta">Template: ${encounter.templateId} | Hash: ${encounter.recipeHash} | Catalog: ${encounter.catalogVersion}</p>
-          <p class="dev-meta">Seed: ${encounter.seed}</p>
+          ${renderEncounterDebugMetadata(encounter)}
           <p>Respond in <span data-countdown></span>s</p>
           <div class="encounter-actions">
             <button data-action="accept">Investigate</button>
@@ -42,6 +43,13 @@ export class EncounterUI {
     }
     this.element.querySelector("[data-countdown]").textContent = Math.ceil(encounter.remaining);
   }
+}
+
+export function renderEncounterDebugMetadata(encounter, { developmentMode = CONFIG.DEVELOPMENT_MODE } = {}) {
+  if (!developmentMode) return "";
+  return `
+          <p class="dev-meta">Template: ${encounter.templateId} | Hash: ${encounter.recipeHash} | Catalog: ${encounter.catalogVersion}</p>
+          <p class="dev-meta">Seed: ${encounter.seed}</p>`;
 }
 
 function generationLabel(rating) {

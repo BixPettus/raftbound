@@ -7,10 +7,10 @@ import { Hotbar } from "../src/items/hotbar.js";
 import { PlayerInventory, INVENTORY_POLICIES } from "../src/items/player-inventory.js";
 import { getRecipe } from "../src/items/recipe-registry.js";
 import { CraftingSystem } from "../src/items/crafting-system.js";
-import { generateIsland } from "../src/world/island-generator.js";
+import { generateIsland, serializeIsland } from "../src/world/island-generator.js";
 import { Raft } from "../src/raft/raft.js";
 import { BuildingSystem } from "../src/raft/building-system.js";
-import { createSaveObject, validateSave, SAVE_VERSION } from "../src/persistence/save-schema.js";
+import { createSaveObject, sanitizeSaveForRuntimeMode, validateSave, SAVE_VERSION } from "../src/persistence/save-schema.js";
 import { SaveManager } from "../src/persistence/save-manager.js";
 import { migrateSave } from "../src/persistence/migrations.js";
 import { getItemDefinition } from "../src/items/item-registry.js";
@@ -27,6 +27,9 @@ import { rollDropTable } from "../src/world/tile-damage-system.js";
 import { RandomStreams } from "../src/world/generation/random-streams.js";
 import { createIslandDefinition } from "../src/world/generation/island-generator.js";
 import { buildTraversalGrid, isReachable } from "../src/world/generation/traversal-grid.js";
+import { restorePendingEncounter, rollIslandEncounter } from "../src/world/catalog/encounter-roller.js";
+import { renderEncounterDebugMetadata } from "../src/ui/encounter-ui.js";
+import { ISLAND_CATALOG_VERSION } from "../src/data/world/catalog-version.js";
 
 function testSeededRandomRepeatability() {
   const a = new SeededRandom("same-seed");
@@ -495,6 +498,85 @@ function testLegacyGenerationIslandMigrationReturnsToSailing() {
   assert.deepEqual(migrated.raft.blocks, []);
 }
 
+function testPendingNaturalEncounterSurvivesSaveReload() {
+  const pending = rollIslandEncounter({ voyageSeed: "pending-natural", rollIndex: 0, playerProgression: { level: 1, unlocks: [] } });
+  pending.remaining = 17.5;
+  const save = createVoyageSave({ pendingEncounter: pending, encounterRollIndex: 1 });
+  const restored = restorePendingEncounter(save.voyage.pendingEncounter);
+  assert.equal(restored.templateId, pending.templateId);
+  assert.equal(restored.recipeHash, pending.recipeHash);
+  assert.equal(restored.rollType, "natural");
+  assert.equal(restored.rollIndex, 0);
+  assert.equal(restored.remaining, 17.5);
+}
+
+function testPendingDebugEncounterSurvivesSaveReload() {
+  const pending = rollIslandEncounter({ voyageSeed: "pending-debug", rollIndex: 2, rollType: "debug", debugOptions: { ignoreLevelGate: true } });
+  const save = createVoyageSave({ pendingEncounter: pending, debugRollIndex: 3 });
+  const restored = restorePendingEncounter(save.voyage.pendingEncounter);
+  assert.equal(restored.templateId, pending.templateId);
+  assert.equal(restored.recipeHash, pending.recipeHash);
+  assert.equal(restored.rollType, "debug");
+  assert.equal(restored.rollIndex, 2);
+}
+
+function testRollIndicesDoNotSkipAfterReload() {
+  const pending = rollIslandEncounter({ voyageSeed: "roll-index", rollIndex: 4, playerProgression: { level: 1, unlocks: [] } });
+  const save = createVoyageSave({ voyageSeed: "roll-index", pendingEncounter: pending, encounterRollIndex: 5 });
+  const restored = restorePendingEncounter(save.voyage.pendingEncounter);
+  const next = rollIslandEncounter({ voyageSeed: save.voyage.voyageSeed, rollIndex: save.voyage.encounterRollIndex, playerProgression: { level: 1, unlocks: [] } });
+  assert.equal(restored.rollIndex, 4);
+  assert.equal(save.voyage.encounterRollIndex, 5);
+  assert.notEqual(next.seed, restored.seed);
+}
+
+function testRecipeHashMismatchDiscardsOnlyActiveIsland() {
+  const save = createSaveWithCurrentIsland();
+  save.voyage.currentIsland.recipeHash = "deadbeef";
+  const migrated = migrateSave(save);
+  assert.equal(migrated.voyage.currentState, "SAILING");
+  assert.equal(migrated.voyage.currentIsland, null);
+  assert.equal(migrated.voyage.progression.level, 3);
+  assert.equal(migrated.raft.blocks.length, 1);
+  assert.equal(migrated.player.health, 88);
+}
+
+function testCatalogVersionMismatchDiscardsOnlyActiveIsland() {
+  const save = createSaveWithCurrentIsland();
+  save.voyage.currentIsland.catalogVersion = ISLAND_CATALOG_VERSION + 1;
+  const migrated = migrateSave(save);
+  assert.equal(migrated.voyage.currentState, "SAILING");
+  assert.equal(migrated.voyage.currentIsland, null);
+  assert.equal(migrated.voyage.progression.unlocks.includes("boatcraft"), true);
+  assert.equal(migrated.raft.blocks.length, 1);
+}
+
+function testProductionSanitizationStripsCompassAndPreservesSave() {
+  const pending = rollIslandEncounter({ voyageSeed: "debug-sanitize", rollIndex: 0, rollType: "debug", debugOptions: { ignoreLevelGate: true } });
+  const save = createVoyageSave({ pendingEncounter: pending, debugRollIndex: 8 });
+  save.player.inventory[0] = { itemId: "debug_compass", quantity: 1 };
+  save.player.hotbar.slots[0] = { itemId: "debug_compass", quantity: 1 };
+  save.voyage.debugState = { compassOpen: true };
+  save.pendingCommands = [{ type: "debug_roll_encounter" }];
+
+  assert.equal(validateSave(save, { developmentMode: false }).ok, false);
+  const sanitized = sanitizeSaveForRuntimeMode(save, { developmentMode: false });
+  assert.equal(validateSave(sanitized, { developmentMode: false }).ok, true);
+  assert.equal(sanitized.player.inventory.some((slot) => slot?.itemId === "debug_compass"), false);
+  assert.equal(sanitized.player.hotbar.slots.some((slot) => slot?.itemId === "debug_compass"), false);
+  assert.equal(sanitized.voyage.pendingEncounter, null);
+  assert.equal(sanitized.voyage.debugRollIndex, 0);
+  assert.equal(sanitized.voyage.progression.level, 3);
+}
+
+function testProductionEncounterUiHidesInternals() {
+  const encounter = rollIslandEncounter({ voyageSeed: "ui-production", rollIndex: 0, playerProgression: { level: 1, unlocks: [] } });
+  const html = renderEncounterDebugMetadata(encounter, { developmentMode: false });
+  assert.equal(html.includes(encounter.seed), false);
+  assert.equal(html.includes(encounter.recipeHash), false);
+  assert.equal(html.includes(encounter.templateId), false);
+}
+
 function testTerrainDigging() {
   const island = generateIsland({ seed: "terrain-digging", biome: "temperate", size: "small", generationVersion: CONFIG.GENERATION_VERSION });
   const inventory = new Inventory(4);
@@ -805,6 +887,13 @@ const tests = [
   testTraversalCannotCrossSealedWall,
   testRandomStreamIsolation,
   testLegacyGenerationIslandMigrationReturnsToSailing,
+  testPendingNaturalEncounterSurvivesSaveReload,
+  testPendingDebugEncounterSurvivesSaveReload,
+  testRollIndicesDoNotSkipAfterReload,
+  testRecipeHashMismatchDiscardsOnlyActiveIsland,
+  testCatalogVersionMismatchDiscardsOnlyActiveIsland,
+  testProductionSanitizationStripsCompassAndPreservesSave,
+  testProductionEncounterUiHidesInternals,
   testTerrainDigging,
   testTileDamageAccumulatesBeforeBreaking,
   testDropRangeUsesInclusiveMinMax,
@@ -884,6 +973,48 @@ function editTestContext({ player, world }) {
       world.island.itemDrops ??= [];
       world.island.itemDrops.push({ itemId, quantity, x, y, destroyed: false, serialize: () => ({ itemId, quantity, x, y }) });
     }
+  };
+}
+
+function createVoyageSave({ voyageSeed = "save-seed", pendingEncounter = null, encounterRollIndex = 0, debugRollIndex = 0 } = {}) {
+  const raft = Raft.createInitial();
+  const game = {
+    createdAt: new Date().toISOString(),
+    distanceTravelled: 12,
+    encounterCount: 1,
+    voyageSeed,
+    encounterRollIndex,
+    debugRollIndex,
+    progression: { level: 3, experience: 20, unlocks: ["boatcraft"] },
+    pendingEncounter,
+    state: { current: "SAILING" },
+    serializeCurrentIsland: () => null,
+    player: {
+      serialize: () => ({
+        health: 88,
+        oxygen: 100,
+        position: { x: 1, y: 2 },
+        inventory: new Inventory().serialize(),
+        hotbar: { selectedIndex: 0, slots: new Array(9).fill(null) }
+      })
+    },
+    raft
+  };
+  return createSaveObject(game);
+}
+
+function createSaveWithCurrentIsland() {
+  const raft = Raft.createInitial();
+  raft.addBlock("dirt", 0, -1);
+  const island = generateIsland({ seed: "compatible-save-island", biome: "temperate", templateId: "temperate_haven", size: "small", generationVersion: CONFIG.GENERATION_VERSION });
+  return {
+    ...createVoyageSave({ voyageSeed: "active-island" }),
+    voyage: {
+      ...createVoyageSave({ voyageSeed: "active-island" }).voyage,
+      currentState: "ISLAND_ANCHORED",
+      currentIsland: serializeIsland(island)
+    },
+    raft: raft.serialize()
   };
 }
 

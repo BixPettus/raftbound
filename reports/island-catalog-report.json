@@ -32,7 +32,7 @@
     {
       "id": "temperate_enemies",
       "implemented": true,
-      "entries": 1
+      "entries": 2
     },
     {
       "id": "desert_enemies",

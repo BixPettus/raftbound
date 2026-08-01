@@ -24,6 +24,9 @@ import { World } from "../src/world/world.js";
 import { WorldEditSystem } from "../src/world/world-edit-system.js";
 import { TargetResolver } from "../src/world/target-resolver.js";
 import { rollDropTable } from "../src/world/tile-damage-system.js";
+import { RandomStreams } from "../src/world/generation/random-streams.js";
+import { createIslandDefinition } from "../src/world/generation/island-generator.js";
+import { buildTraversalGrid, isReachable } from "../src/world/generation/traversal-grid.js";
 
 function testSeededRandomRepeatability() {
   const a = new SeededRandom("same-seed");
@@ -127,8 +130,9 @@ function testRaftFloatsAtWaterline() {
   const island = generateIsland({ seed: "dock-waterline", biome: "temperate", size: "small", generationVersion: CONFIG.GENERATION_VERSION });
   raft.setDock(island.raftDockTile.tileX, island.raftDockTile.tileY);
   const docked = raft.gridToWorld(foundation.gridX, foundation.gridY);
-  assert.equal(docked.y, seaY - submergedPixels);
-  assert.equal(docked.y + CONFIG.TILE_SIZE, seaY + submergedPixels);
+  const islandSeaY = island.seaLevelTile * CONFIG.TILE_SIZE;
+  assert.equal(docked.y, islandSeaY - submergedPixels);
+  assert.equal(docked.y + CONFIG.TILE_SIZE, islandSeaY + submergedPixels);
 }
 
 function testArrivalBeachMeetsRaftDeck() {
@@ -139,12 +143,12 @@ function testArrivalBeachMeetsRaftDeck() {
   const foundationTiles = raft.structures.filter((structure) => structure.structureType === "wood_foundation").length;
   const firstBeachTileX = island.raftDockTile.tileX + foundationTiles;
   const raftDeckY = raft.gridToWorld(0, 0).y;
-  const beachTopY = (CONFIG.SEA_LEVEL_TILE - 1) * CONFIG.TILE_SIZE;
+  const beachTopY = (island.seaLevelTile - 1) * CONFIG.TILE_SIZE;
 
   assert.equal(firstBeachTileX, 32);
   assert.equal(raftDeckY - beachTopY, CONFIG.RAFT_SUBMERGED_TILES * CONFIG.TILE_SIZE);
-  assert.equal(island.tileMap.getTile(firstBeachTileX, CONFIG.SEA_LEVEL_TILE - 1), "grass");
-  assert.equal(island.tileMap.isSolidTile(firstBeachTileX - 1, CONFIG.SEA_LEVEL_TILE - 1), false);
+  assert.equal(island.tileMap.getTile(firstBeachTileX, island.seaLevelTile - 1), "grass");
+  assert.equal(island.tileMap.isSolidTile(firstBeachTileX - 1, island.seaLevelTile - 1), false);
 }
 
 function testPlayerSeparatesColliderFromSpriteBounds() {
@@ -253,7 +257,7 @@ function testPlayerStepsFromRaftOntoBeach() {
   const island = generateIsland({ seed: "shore-step", biome: "temperate", size: "small", generationVersion: CONFIG.GENERATION_VERSION });
   raft.setDock(island.raftDockTile.tileX, island.raftDockTile.tileY);
   const beachX = island.raftDockTile.tileX + raft.structures.filter((structure) => structure.structureType === "wood_foundation").length;
-  const beachTopY = (CONFIG.SEA_LEVEL_TILE - 1) * CONFIG.TILE_SIZE;
+  const beachTopY = (island.seaLevelTile - 1) * CONFIG.TILE_SIZE;
   const deckY = raft.gridToWorld(0, 0).y;
   const player = new Player({
     x: beachX * CONFIG.TILE_SIZE - CONFIG.PLAYER_WIDTH - 2,
@@ -391,13 +395,113 @@ function testIslandNoiseCavesAndOres() {
   assert.equal(iron > 0, true);
 }
 
+function testGenerationV3DeterminismAndDimensions() {
+  const options = { seed: "v3-deterministic", biome: "temperate", size: "medium", generationVersion: CONFIG.GENERATION_VERSION };
+  const a = generateIsland(options);
+  const b = generateIsland(options);
+  assert.equal(a.generationVersion, 3);
+  assert.equal(a.width, CONFIG.ISLAND_DIMENSIONS.medium.width);
+  assert.equal(a.height, CONFIG.ISLAND_DIMENSIONS.medium.height);
+  assert.equal(a.seaLevelTile, CONFIG.ISLAND_DIMENSIONS.medium.seaLevelTile);
+  assert.equal(hashArray(a.tileMap.tiles), hashArray(b.tileMap.tiles));
+  assert.equal(hashTypedArray(a.waterMask), hashTypedArray(b.waterMask));
+  assert.deepEqual(caveSummary(a), caveSummary(b));
+  assert.deepEqual(a.resources.map((node) => node.id), b.resources.map((node) => node.id));
+  const c = generateIsland({ ...options, seed: "v3-different" });
+  assert.notEqual(hashArray(a.tileMap.tiles), hashArray(c.tileMap.tiles));
+}
+
+function testGenerationV3CaveGraphRequirements() {
+  const medium = generateIsland({ seed: "v3-caves-medium", biome: "temperate", size: "medium", generationVersion: CONFIG.GENERATION_VERSION });
+  const large = generateIsland({ seed: "v3-caves-large", biome: "temperate", size: "large", generationVersion: CONFIG.GENERATION_VERSION });
+  assert.equal(medium.caveGraph.nodes.some((node) => node.type === "SURFACE_ENTRANCE"), true);
+  assert.equal(medium.caveGraph.nodes.some((node) => node.type === "UPPER_CHAMBER"), true);
+  assert.equal(medium.caveGraph.nodes.some((node) => node.type === "MID_CHAMBER"), true);
+  assert.equal(medium.caveGraph.edges.some((edge) => edge.type === "BRANCH"), true);
+  assert.equal(medium.caveGraph.edges.some((edge) => edge.type === "LOOP"), true);
+  const deep = large.caveGraph.nodes.filter((node) => node.type === "DEEP_CAVERN");
+  assert.equal(deep.length > 0, true);
+  assert.equal(deep.some((node) => node.radiusX >= 13 && node.radiusY >= 7), true);
+  assert.equal(large.generationReport.validationFailures.length, 0);
+}
+
+function testGenerationV3WaterMask() {
+  const island = generateIsland({ seed: "v3-water", biome: "temperate", size: "medium", generationVersion: CONFIG.GENERATION_VERSION });
+  let waterOnSolid = 0;
+  let sealedDryCaveBelowSea = 0;
+  let floodedCaveBelowSea = 0;
+  for (let y = island.seaLevelTile + 1; y < island.height - 3; y += 1) {
+    for (let x = 1; x < island.width - 1; x += 1) {
+      const index = y * island.width + x;
+      if (island.waterMask[index] && island.tileMap.isSolidTile(x, y)) waterOnSolid += 1;
+      if (island.caveMask[index] && !island.waterMask[index]) sealedDryCaveBelowSea += 1;
+      if (island.caveMask[index] && island.waterMask[index]) floodedCaveBelowSea += 1;
+    }
+  }
+  assert.equal(waterOnSolid, 0);
+  assert.equal(sealedDryCaveBelowSea > 0, true);
+  assert.equal(floodedCaveBelowSea > 0, true);
+  const dry = findDryCaveCellBelowSea(island);
+  assert.equal(island.tileMap.isWaterTile(dry.x, dry.y), false);
+}
+
+function testTraversalCannotCrossSealedWall() {
+  const tileMap = new TileMap(12, 10, "air", 99);
+  for (let x = 0; x < 12; x += 1) tileMap.setTile(x, 7, "stone");
+  for (let y = 0; y < 7; y += 1) tileMap.setTile(6, y, "stone");
+  const context = {
+    definition: { width: 12, height: 10 },
+    tileMap
+  };
+
+  const reachable = buildTraversalGrid(context, [{ tileX: 2, tileY: 5 }]);
+
+  assert.equal(isReachable(reachable, context, 5, 5), true);
+  assert.equal(isReachable(reachable, context, 7, 5), false);
+  assert.equal(isReachable(reachable, context, 8, 5), false);
+}
+
+function testRandomStreamIsolation() {
+  const definition = createIslandDefinition({ seed: "stream-isolation", biome: "temperate", size: "small", generationVersion: CONFIG.GENERATION_VERSION });
+  const a = new RandomStreams(definition, 0);
+  const b = new RandomStreams(definition, 0);
+  a.get("surface-resources").next();
+  assert.equal(a.get("cave-chambers").next(), b.get("cave-chambers").next());
+}
+
+function testLegacyGenerationIslandMigrationReturnsToSailing() {
+  const raft = Raft.createInitial();
+  const save = {
+    saveVersion: SAVE_VERSION,
+    createdAt: new Date().toISOString(),
+    voyage: {
+      distanceTravelled: 7,
+      encounterCount: 2,
+      currentState: "ISLAND_ANCHORED",
+      currentIsland: { seed: "legacy", biome: "temperate", size: "small", generationVersion: 2, removedResourceIds: [], openedContainerIds: [], modifiedTiles: [], itemDrops: [] }
+    },
+    player: {
+      health: 88,
+      oxygen: 100,
+      position: { x: 1, y: 2 },
+      inventory: new Inventory().serialize(),
+      hotbar: { selectedIndex: 0, slots: [] }
+    },
+    raft: raft.serialize()
+  };
+  const migrated = migrateSave(save);
+  assert.equal(migrated.voyage.currentState, "SAILING");
+  assert.equal(migrated.voyage.currentIsland, null);
+  assert.deepEqual(migrated.raft.blocks, []);
+}
+
 function testTerrainDigging() {
   const island = generateIsland({ seed: "terrain-digging", biome: "temperate", size: "small", generationVersion: CONFIG.GENERATION_VERSION });
   const inventory = new Inventory(4);
   const axe = getItemDefinition("basic_axe");
   const pickaxe = getItemDefinition("basic_pickaxe");
   const grassX = 32;
-  const grassY = CONFIG.SEA_LEVEL_TILE - 1;
+  const grassY = island.seaLevelTile - 1;
   assert.equal(island.tileMap.getTile(grassX, grassY), "grass");
   assert.equal(tryDigTile(island.tileMap, grassX, grassY, axe, inventory).ok, false);
   const grassResult = tryDigTile(island.tileMap, grassX, grassY, pickaxe, inventory);
@@ -405,7 +509,7 @@ function testTerrainDigging() {
   assert.equal(island.tileMap.getTile(grassX, grassY), "air");
   assert.equal(inventory.countItem("dirt_block") >= 1, true);
 
-  const stoneY = CONFIG.SEA_LEVEL_TILE + 6;
+  const stoneY = island.seaLevelTile + 6;
   assert.equal(island.tileMap.getTile(grassX, stoneY), "stone");
   const stoneResult = tryDigTile(island.tileMap, grassX, stoneY, pickaxe, inventory);
   assert.equal(stoneResult.ok, true);
@@ -445,7 +549,7 @@ function testIslandAndRaftDirtPlacementLifecycle() {
   const raft = Raft.createInitial();
   raft.setDock(island.raftDockTile.tileX, island.raftDockTile.tileY);
   const world = new World({ raft, island });
-  const player = Player.createNew({ x: 33 * CONFIG.TILE_SIZE, y: (CONFIG.SEA_LEVEL_TILE - 4) * CONFIG.TILE_SIZE });
+  const player = Player.createNew({ x: 33 * CONFIG.TILE_SIZE, y: (island.seaLevelTile - 4) * CONFIG.TILE_SIZE });
   player.hotbar.slots[0] = { itemId: "dirt_block", quantity: 2 };
   player.hotbar.select(0);
   const edit = new WorldEditSystem();
@@ -455,7 +559,7 @@ function testIslandAndRaftDirtPlacementLifecycle() {
   const islandTarget = {
     domain: "island_terrain",
     tileX: 33,
-    tileY: CONFIG.SEA_LEVEL_TILE - 2,
+    tileY: island.seaLevelTile - 2,
     tileId: "dirt",
     itemDefinition
   };
@@ -687,6 +791,12 @@ const tests = [
   testPointerDownIsCanonicalAndNotDebounced,
   testIslandGeneration,
   testIslandNoiseCavesAndOres,
+  testGenerationV3DeterminismAndDimensions,
+  testGenerationV3CaveGraphRequirements,
+  testGenerationV3WaterMask,
+  testTraversalCannotCrossSealedWall,
+  testRandomStreamIsolation,
+  testLegacyGenerationIslandMigrationReturnsToSailing,
   testTerrainDigging,
   testTileDamageAccumulatesBeforeBreaking,
   testDropRangeUsesInclusiveMinMax,
@@ -767,4 +877,42 @@ function editTestContext({ player, world }) {
       world.island.itemDrops.push({ itemId, quantity, x, y, destroyed: false, serialize: () => ({ itemId, quantity, x, y }) });
     }
   };
+}
+
+function hashArray(values) {
+  let hash = 2166136261;
+  for (const value of values) {
+    const text = String(value);
+    for (let i = 0; i < text.length; i += 1) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+  }
+  return hash >>> 0;
+}
+
+function hashTypedArray(values) {
+  let hash = 2166136261;
+  for (const value of values) {
+    hash ^= value;
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function caveSummary(island) {
+  return {
+    nodes: island.caveGraph.nodes.map((node) => `${node.type}:${Math.round(node.centerX)}:${Math.round(node.centerY)}:${Math.round(node.radiusX)}:${Math.round(node.radiusY)}`),
+    edges: island.caveGraph.edges.map((edge) => `${edge.from}->${edge.to}:${edge.type}`)
+  };
+}
+
+function findDryCaveCellBelowSea(island) {
+  for (let y = island.seaLevelTile + 1; y < island.height - 3; y += 1) {
+    for (let x = 1; x < island.width - 1; x += 1) {
+      const index = y * island.width + x;
+      if (island.caveMask[index] && !island.waterMask[index]) return { x, y };
+    }
+  }
+  throw new Error("No dry cave cell found below sea level.");
 }

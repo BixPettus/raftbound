@@ -51,8 +51,14 @@ export const CONFIG = Object.freeze({
   RAFT_BLOCK_STACK_LIMIT: 3,
   RAFT_WATERLINE_TILE_OFFSET: -1,
   RAFT_SUBMERGED_TILES: 0.5,
-  GENERATION_VERSION: 2,
+  GENERATION_VERSION: 3,
   ISLAND_HEIGHT: 48,
+  ISLAND_DIMENSIONS: {
+    small: { width: 192, height: 96, seaLevelTile: 30 },
+    medium: { width: 256, height: 112, seaLevelTile: 32 },
+    large: { width: 320, height: 128, seaLevelTile: 34 }
+  },
+  GENERATION_MAX_ATTEMPTS: 12,
   ISLAND_WIDTHS: {
     small: 170,
     medium: 220,

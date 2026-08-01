@@ -74,3 +74,86 @@ Base SHA: `c9debfbb374a6a310d9e9a7bb02a96a87c80225e`
 
 - Automated suite covers inventory facade policies, hotbar crafting ingredients, progressive tile damage, inclusive drop ranges, dirt island/raft lifecycle, failed placement rollback, raft bounds, raft block persistence, stable resource IDs, and save v1 migration.
 - Generation V3 was not included.
+
+## Work Package 3 Update
+
+Branch: `codex/generation-v3-cave-foundation`
+
+Base SHA: `d0177debb0f88d9ea484003684626b7742612204`
+
+Generation version: `2 -> 3`
+
+Save version: unchanged at `2`
+
+### Generation Architecture
+
+- Added a staged Generation V3 pipeline under `src/world/generation/`.
+- The public `src/world/island-generator.js` path remains a compatibility entry point.
+- Generation context owns definition, profile, island-local `TileMap`, surface heights, cave graph, cave mask, water mask, resources, enemies and diagnostics.
+- Named deterministic RNG substreams isolate surface, cave, water, ore, resource and enemy generation.
+- Island dimensions are now data-driven by size with island-local sea levels.
+- Temperate V3 now creates broad surfaces, strata, planned surface entrances, upper/mid chambers, deep caverns, branches and loops.
+
+### Cave Graph
+
+- Node types: `SURFACE_ENTRANCE`, `UPPER_CHAMBER`, `MID_CHAMBER`, `DEEP_CAVERN`, `SIDE_CHAMBER`.
+- Edge types: `MAIN_ROUTE`, `BRANCH`, `LOOP`.
+- Medium and large islands include loops; large islands include substantial deep caverns.
+- A sealed dry cave pocket is carved separately from the ocean-connected cave path to validate static water separation.
+
+### Static Water
+
+- `TileMap` now supports a generated `waterMask`.
+- Water is boundary-flooded from ocean-connected non-solid cells at or below the island sea level.
+- Sealed cave air below sea level remains dry.
+- Rendering uses visible water-mask cells instead of a universal underwater overlay when a mask is present.
+- Player water checks use `TileMap.isWaterTile`, so swimming/oxygen follow the mask.
+
+### Validation
+
+- Validation checks required resource types, cave graph requirements, cave-air ratio, water-on-solid, surface slope and actual player reachability.
+- Reachability uses explicit walk, fall, jump-arc and swimming transitions, and every transition checks swept collider clearance.
+- Valid islands must prove reachable guaranteed wood, stone and fibre, at least one cave entrance, an upper chamber, a mid chamber, and a deep cavern on medium and large islands.
+- Fallback generation now runs through the same validation path and throws explicitly if the safe fallback is invalid.
+- Generation reports include dimensions, selected attempt, fallback use, tile counts, cave counts, water counts, ore counts, timings and validation failures.
+- Development mode exposes the latest generation report, a helper after an island is generated, and deterministic debug island URLs via `?debugIsland=<seed>&debugSize=<size>`.
+
+### Save Compatibility
+
+- Active saved islands with `generationVersion < 3` are discarded on load.
+- Player health, inventory, hotbar, voyage progress, complete raft, raft blocks, structures and storage are preserved.
+- The player returns to sailing with a migration notice.
+- Generation V3 island saves restore seed, biome, size, generation version, removed resource IDs, tile modifications, opened containers and active island drops.
+
+### Matrix Results
+
+- Command: `npm run test:generation`
+- Seeds: `matrix-000` through `matrix-099`
+- Sizes: `small`, `medium`, `large`
+- Islands generated: `300`
+- Fallback count: `0`
+- Attempt distribution: attempt 0 = `260`, attempt 1 = `34`, attempt 2 = `6`
+- Timing: p95 `110.31 ms`, p99 `121.07 ms`, max `128.56 ms`
+- Cave-air ratio range: `0.114` to `0.2779`
+
+### Regression Tests
+
+- Command: `npm test`
+- Result: `42 checks passed`
+- Added `testTraversalCannotCrossSealedWall`, which proves the traversal graph cannot cross a solid wall sealed from floor to ceiling.
+
+### Browser Validation
+
+- Local app served on `http://localhost:4174/`.
+- In-app browser manually inspected deterministic debug seeds:
+  - Small: `http://localhost:4174/?debugIsland=inspect-small&debugSize=small`
+  - Medium: `http://localhost:4174/?debugIsland=inspect-medium&debugSize=medium`
+  - Large: `http://localhost:4174/?debugIsland=inspect-large&debugSize=large`
+- Each rendered an anchored island with the correct seed visible in the HUD.
+- Browser console warnings/errors: none.
+
+### Known Limitations
+
+- Full biome implementation remains out of scope; only temperate V3 is tuned.
+- Traversal validation is conservative and abstract rather than a full reproduction of runtime physics.
+- Debug visualisation is exposed through diagnostics/report data, not a full in-game toggleable overlay.

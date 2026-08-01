@@ -29,11 +29,11 @@ export class Renderer {
     const biome = game.currentBiome;
     ctx.clearRect(0, 0, renderGame.canvas.width, renderGame.canvas.height);
     drawSky(ctx, renderGame.canvas, biome?.palette?.sky ?? "#84d2ef");
-    drawOcean(ctx, renderGame);
+    drawWater(ctx, renderGame);
     drawTiles(ctx, renderGame);
     drawRaft(ctx, renderGame);
     drawRaftBlocks(ctx, renderGame);
-    drawWaterOverlay(ctx, renderGame);
+    drawUnderwaterTint(ctx, renderGame);
     drawItemDrops(ctx, renderGame);
     drawResources(ctx, renderGame);
     drawEnemies(ctx, renderGame);
@@ -52,7 +52,11 @@ function drawSky(ctx, canvas, color) {
   ctx.fillRect(210, 42, 130, 10);
 }
 
-function drawOcean(ctx, game) {
+function drawWater(ctx, game) {
+  if (game.world.tileMap.waterMask) {
+    drawWaterCells(ctx, game);
+    return;
+  }
   const y = Math.round(game.world.waterSystem.seaLevelY - game.camera.y);
   ctx.fillStyle = "#247baa";
   ctx.fillRect(0, y, game.canvas.width, game.canvas.height - y);
@@ -70,7 +74,16 @@ function drawOcean(ctx, game) {
   ctx.globalAlpha = 1;
 }
 
-function drawWaterOverlay(ctx, game) {
+function drawUnderwaterTint(ctx, game) {
+  if (game.world.tileMap.waterMask) {
+    if (!game.player.inWater) return;
+    ctx.save();
+    ctx.globalAlpha = 0.16;
+    ctx.fillStyle = "#247baa";
+    ctx.fillRect(0, 0, game.canvas.width, game.canvas.height);
+    ctx.restore();
+    return;
+  }
   const y = Math.round(game.world.waterSystem.seaLevelY - game.camera.y);
   ctx.save();
   ctx.globalAlpha = 0.24;
@@ -86,6 +99,33 @@ function drawWaterOverlay(ctx, game) {
     ctx.lineTo(x + 28, waveY - 3);
     ctx.lineTo(x + 56, waveY);
     ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawWaterCells(ctx, game) {
+  const map = game.world.tileMap;
+  const minX = Math.max(0, Math.floor(game.camera.x / CONFIG.TILE_SIZE) - 1);
+  const maxX = Math.min(map.width - 1, Math.ceil((game.camera.x + game.canvas.width) / CONFIG.TILE_SIZE) + 1);
+  const minY = Math.max(0, Math.floor(game.camera.y / CONFIG.TILE_SIZE) - 1);
+  const maxY = Math.min(map.height - 1, Math.ceil((game.camera.y + game.canvas.height) / CONFIG.TILE_SIZE) + 1);
+  ctx.save();
+  ctx.globalAlpha = 0.78;
+  ctx.fillStyle = "#247baa";
+  ctx.strokeStyle = "#9bd7ea";
+  for (let y = minY; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      if (!map.isWaterTile(x, y)) continue;
+      const screen = worldToScreen(x * CONFIG.TILE_SIZE, y * CONFIG.TILE_SIZE, game.camera);
+      ctx.fillRect(screen.x, screen.y, CONFIG.TILE_SIZE, CONFIG.TILE_SIZE);
+      if (!map.isWaterTile(x, y - 1)) {
+        const waveY = screen.y + 3 + Math.sin(game.world.waterSystem.animationTime * 2 + x * 0.8) * 2;
+        ctx.beginPath();
+        ctx.moveTo(screen.x, waveY);
+        ctx.lineTo(screen.x + CONFIG.TILE_SIZE, waveY);
+        ctx.stroke();
+      }
+    }
   }
   ctx.restore();
 }

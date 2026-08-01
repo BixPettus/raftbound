@@ -12,6 +12,17 @@ python -m http.server 8000
 
 Then open `http://localhost:8000`.
 
+## Tests
+
+```bash
+npm test
+npm run test:generation
+```
+
+`npm test` runs the fast unit and integration suite. `npm run test:generation` runs the deterministic Generation V3 temperate matrix across 100 seeds and all three island sizes.
+
+In development mode, deterministic island inspection is available at `/?debugIsland=<seed>&debugSize=<small|medium|large>`.
+
 ## Controls
 
 - `A` / `Left`: move left
@@ -32,7 +43,7 @@ Then open `http://localhost:8000`.
 
 The project uses vanilla JavaScript ES modules, Canvas 2D, browser `localStorage`, and `requestAnimationFrame`. Runtime coordination lives in `src/core/game.js`, with an explicit state machine in `src/core/game-state.js`. Tile conversion and collision use a shared grid model with `TILE_SIZE = 32`.
 
-Persistent raft data is handled separately from island generation in `src/raft`. Disposable islands are generated in `src/world/island-generator.js` from generation version, seed, biome, and size using a deterministic pseudo-random generator.
+Persistent raft data is handled separately from island generation in `src/raft`. Disposable islands are generated through `src/world/island-generator.js`, which delegates to a staged Generation V3 pipeline under `src/world/generation`. Generation uses deterministic named random substreams, island-local sea levels, cave graphs, static water masks, strata, ore clusters, validation reports, and stable generated feature IDs.
 
 Items, recipes, tiles, structures, and biomes are data-driven through modules in `src/data` and registry wrappers in each system folder. UI modules read game state and call system APIs instead of mutating inventories or raft structures directly.
 
@@ -42,7 +53,7 @@ Items, recipes, tiles, structures, and biomes are data-driven through modules in
 - Fixed timestep update loop
 - Smooth player movement, jumping, swimming, oxygen, damage, death, and raft respawn
 - Persistent raft with foundations, sail, storage crate, workbench, and build placement
-- Deterministic temperate island generation with biome placeholders
+- Deterministic temperate Generation V3 islands with broad surfaces, cave networks, deep caverns, static water masks, ore clusters, diagnostics, and biome placeholders
 - Wood, stone, and fibre resource nodes
 - Inventory, hotbar selection, recipe crafting, and storage transfer
 - Shore crawler enemy with patrol, chase, attack, hurt, and death states

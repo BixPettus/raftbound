@@ -24,6 +24,8 @@ export class Hud {
         <div class="metric">State<br><strong>${this.game.state.current}</strong></div>
         <div class="metric">Biome<br><strong>${island?.biome ?? "Open ocean"}</strong></div>
         <div class="metric">Seed<br><strong>${island?.seed ?? "-"}</strong></div>
+        ${island ? `<div class="metric">Template<br><strong>${island.templateId}</strong></div>` : ""}
+        ${island ? `<div class="metric">Recipe<br><strong>${island.recipeHash}</strong></div>` : ""}
         <div class="metric">Distance<br><strong>${Math.floor(this.game.distanceTravelled)} m</strong></div>
         <div class="metric">Selected<br><strong>${selectedName}</strong></div>
       </div>

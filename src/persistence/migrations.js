@@ -6,6 +6,23 @@ export function migrateSave(rawSave) {
     const save = discardLegacyIsland(rawSave);
     return validateSave(save).ok ? save : null;
   }
+  if (rawSave?.saveVersion === 2) {
+    const migrated = {
+      ...rawSave,
+      saveVersion: SAVE_VERSION,
+      voyage: {
+        ...rawSave.voyage,
+        voyageSeed: rawSave.voyage?.voyageSeed ?? createMigrationVoyageSeed(),
+        encounterRollIndex: 0,
+        debugRollIndex: 0,
+        progression: { level: 1, experience: 0, unlocks: [] },
+        currentState: "SAILING",
+        currentIsland: null,
+        generationMigrationNotice: "Legacy active island discarded for Generation V4 catalog migration. Persistent raft and player progress were preserved."
+      }
+    };
+    return validateSave(migrated).ok ? migrated : null;
+  }
   if (rawSave?.saveVersion === 1) {
     const oldIsland = rawSave.voyage?.currentIsland;
     const hasOldRemovedResources = (oldIsland?.removedResourceIds ?? []).length > 0;
@@ -18,6 +35,10 @@ export function migrateSave(rawSave) {
       },
       voyage: {
         ...rawSave.voyage,
+        voyageSeed: createMigrationVoyageSeed(),
+        encounterRollIndex: 0,
+        debugRollIndex: 0,
+        progression: { level: 1, experience: 0, unlocks: [] },
         currentState: hasOldRemovedResources ? "SAILING" : rawSave.voyage?.currentState,
         currentIsland: oldIsland && !hasOldRemovedResources ? {
           ...oldIsland,
@@ -40,7 +61,11 @@ function discardLegacyIsland(save) {
       ...save.voyage,
       currentState: "SAILING",
       currentIsland: null,
-      generationMigrationNotice: "Legacy active island discarded for Generation V3. Persistent raft and player progress were preserved."
+      generationMigrationNotice: "Legacy active island discarded for Generation V4. Persistent raft and player progress were preserved."
     }
   };
+}
+
+function createMigrationVoyageSeed() {
+  return `migrated-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
 }

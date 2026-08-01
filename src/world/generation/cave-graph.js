@@ -20,8 +20,8 @@ function placeEntrances(context) {
   const random = context.randomStreams.get("cave-entrances");
   const count = context.profile.caveTargets.entrances;
   const nodes = [];
-  const minX = context.profile.startX + context.profile.arrivalFlatTiles + 12;
-  const maxX = context.definition.width - context.profile.endMargin - 18;
+  const minX = context.profile.startX + context.recipe.edgeProfiles.arrival.width + 12;
+  const maxX = context.definition.width - context.profile.endMargin - context.recipe.edgeProfiles.far.width - 8;
   for (let i = 0; i < count; i += 1) {
     const x = Math.round(minX + ((i + 0.45) / count) * (maxX - minX) + random.int(-8, 8));
     const y = context.surfaceHeights[x] + 2;
@@ -33,8 +33,8 @@ function placeEntrances(context) {
 function placeChambers(context, type, count, minDepth, maxDepth, minRadiusX, maxRadiusX) {
   const random = context.randomStreams.get("cave-chambers");
   const nodes = [];
-  const minX = context.profile.startX + context.profile.arrivalFlatTiles + 18;
-  const maxX = context.definition.width - context.profile.endMargin - 22;
+  const minX = context.profile.startX + context.recipe.edgeProfiles.arrival.width + 18;
+  const maxX = context.definition.width - context.profile.endMargin - context.recipe.edgeProfiles.far.width - 12;
   for (let i = 0; i < count; i += 1) {
     const x = random.int(minX, maxX);
     const surfaceY = context.surfaceHeights[x];

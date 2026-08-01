@@ -1,5 +1,5 @@
-import { Game } from "./core/game.js?v=terrain-inventory-4";
-import { CONFIG } from "./config.js?v=terrain-inventory-4";
+import { Game } from "./core/game.js?v=wp4-catalog-1";
+import { CONFIG } from "./config.js?v=wp4-catalog-1";
 
 const canvas = document.getElementById("gameCanvas");
 const game = new Game(canvas, {
@@ -21,7 +21,13 @@ if (CONFIG.DEVELOPMENT_MODE) {
     window.__RAFTBOUND_DEBUG_REPORT__ = game.loadDebugIsland({
       seed: debugIsland,
       biome: debugParams.get("debugBiome") ?? "temperate",
-      size: debugParams.get("debugSize") ?? "small"
+      size: debugParams.get("debugSize") ?? "small",
+      templateId: debugParams.get("debugTemplate") ?? "temperate_haven"
     });
   }
+  window.__RAFTBOUND_COMPASS__ = {
+    setOptions: (options) => game.setCompassOptions(options),
+    setLevel: (level) => game.setDebugLevel(level),
+    roll: () => game.debugRollEncounter()
+  };
 }

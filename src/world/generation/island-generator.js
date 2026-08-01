@@ -1,6 +1,7 @@
 import { CONFIG } from "../../config.js";
 import { createGenerationContext, createIslandDefinition, stageTiming } from "./generation-context.js";
 import { generateSurface } from "./surface-generator.js";
+import { shapeEdges } from "./edge-generator.js";
 import { fillStrata } from "./strata-generator.js";
 import { createCaveGraph } from "./cave-graph.js";
 import { carveCaves } from "./cave-carver.js";
@@ -13,6 +14,10 @@ import { buildGenerationReport } from "./generation-report.js";
 export { createIslandDefinition };
 
 export function generateIslandV3(options) {
+  return generateIslandV4(options);
+}
+
+export function generateIslandV4(options) {
   const definition = createIslandDefinition(options);
   const start = now();
   const failedAttempts = [];
@@ -28,7 +33,7 @@ export function generateIslandV3(options) {
     const attemptSummary = failedAttempts
       .map(({ attempt, failures }) => `attempt ${attempt}: ${failures.join(",")}`)
       .join("; ");
-    throw new Error(`Generation V3 fallback invalid for ${definition.seed}/${definition.size}: ${validation.failures.join(",")} after ${attemptSummary}`);
+    throw new Error(`Generation V4 fallback invalid for ${definition.seed}/${definition.size}: ${validation.failures.join(",")} after ${attemptSummary}`);
   }
   context.diagnostics.validationFailures = [];
   context.diagnostics.failedAttempts = failedAttempts;
@@ -38,6 +43,7 @@ export function generateIslandV3(options) {
 function runAttempt(definition, attempt, fallback = false) {
   const context = createGenerationContext(definition, attempt);
   stageTiming(context, "surface", () => generateSurface(context));
+  stageTiming(context, "edges", () => shapeEdges(context));
   stageTiming(context, "strata", () => fillStrata(context));
   stageTiming(context, "caveGraph", () => createCaveGraph(context));
   stageTiming(context, "caves", () => carveCaves(context));
@@ -53,6 +59,12 @@ function finalizeIsland(context, validation, options) {
   const report = buildGenerationReport(context, validation, options);
   const island = {
     ...context.definition,
+    catalogVersion: context.definition.catalogVersion,
+    templateId: context.definition.templateId,
+    templateName: context.definition.templateName,
+    archetypeId: context.definition.archetypeId,
+    recipeHash: context.definition.recipeHash,
+    recipe: context.recipe,
     tileMap: context.tileMap,
     surfaceHeights: context.surfaceHeights,
     caveGraph: context.caveGraph,
@@ -74,20 +86,23 @@ function finalizeIsland(context, validation, options) {
 function repairArrival(context) {
   const startX = context.profile.startX;
   const sea = context.definition.seaLevelTile;
+  const edgeSurface = context.recipe.edgeProfiles.arrival.profile.surface;
   for (let x = startX - 2; x < startX; x += 1) {
     for (let y = sea - 8; y < sea + 1; y += 1) context.tileMap.setTile(x, y, "air");
   }
-  for (let x = startX; x <= startX + context.profile.arrivalFlatTiles; x += 1) {
+  for (let x = startX; x <= startX + context.recipe.edgeProfiles.arrival.width; x += 1) {
     for (let y = sea - 8; y < sea - 1; y += 1) context.tileMap.setTile(x, y, "air");
-    context.tileMap.setTile(x, sea - 1, "grass");
-    for (let y = sea; y < Math.min(context.definition.height - 3, sea + 8); y += 1) context.tileMap.setTile(x, y, y > sea + 4 ? "stone" : "dirt");
+    context.tileMap.setTile(x, sea - 1, edgeSurface.surfaceTile);
+    for (let y = sea; y < Math.min(context.definition.height - 3, sea + 8); y += 1) {
+      context.tileMap.setTile(x, y, y > sea + edgeSurface.transitionDepth ? edgeSurface.deepTransitionTile : edgeSurface.subsurfaceTile);
+    }
   }
 }
 
 function exposeDevelopmentHelpers(island) {
   if (!CONFIG.DEVELOPMENT_MODE || typeof window === "undefined") return;
   window.__RAFTBOUND_GENERATION_REPORT__ = island.generationReport;
-  window.__RAFTBOUND_GENERATE_ISLAND__ = (options) => generateIslandV3({ generationVersion: CONFIG.GENERATION_VERSION, ...options });
+  window.__RAFTBOUND_GENERATE_ISLAND__ = (options) => generateIslandV4({ generationVersion: CONFIG.GENERATION_VERSION, ...options });
 }
 
 function now() {

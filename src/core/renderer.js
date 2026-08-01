@@ -1,4 +1,4 @@
-import { CONFIG } from "../config.js?v=terrain-inventory-4";
+import { CONFIG } from "../config.js?v=wp4-catalog-1";
 import { getTileDefinition } from "../world/tile-registry.js";
 import { getStructureDefinition } from "../raft/structure-registry.js";
 import { worldToScreen, worldToTile } from "../world/coordinates.js";

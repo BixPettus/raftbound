@@ -1,11 +1,11 @@
-import { CONFIG } from "../config.js?v=terrain-inventory-4";
+import { CONFIG } from "../config.js?v=wp4-catalog-1";
 import { ItemDrop } from "../entities/item-drop.js";
-import { generateIslandV3, createIslandDefinition } from "./generation/island-generator.js";
+import { generateIslandV4, createIslandDefinition } from "./generation/island-generator.js";
 
 export { createIslandDefinition };
 
 export function generateIsland(options) {
-  return generateIslandV3(options);
+  return generateIslandV4(options);
 }
 
 export function serializeIsland(island) {
@@ -14,7 +14,10 @@ export function serializeIsland(island) {
     seed: island.seed,
     biome: island.biome,
     size: island.size,
+    templateId: island.templateId,
+    catalogVersion: island.catalogVersion,
     generationVersion: island.generationVersion,
+    recipeHash: island.recipeHash,
     removedResourceIds: [...island.removedResourceIds],
     openedContainerIds: [...island.openedContainerIds],
     modifiedTiles: island.tileMap.serializeModifications(),

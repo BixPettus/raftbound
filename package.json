@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "node tests/run-tests.mjs",
-    "test:generation": "node tests/generation-matrix.mjs"
+    "test:catalog": "node tests/catalog-validation.mjs",
+    "test:generation": "node tests/generation-matrix.mjs",
+    "report:catalog": "node tests/catalog-report.mjs"
   }
 }

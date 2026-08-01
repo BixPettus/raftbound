@@ -1,3 +1,4 @@
+import { CONFIG } from "../../config.js";
 import { contextIndex } from "./generation-context.js";
 import { buildTraversalGrid, isReachable } from "./traversal-grid.js";
 
@@ -14,6 +15,10 @@ export function validateGeneratedIsland(context) {
   if (metrics.caveAirRatio < context.profile.caveAirRatio.min || metrics.caveAirRatio > context.profile.caveAirRatio.max) failures.push("CAVE_AIR_RATIO");
   if (metrics.waterOnSolid > 0) failures.push("WATER_IN_SOLID");
   if (metrics.maximumSurfaceSlope > 2) failures.push("SURFACE_SLOPE");
+  if (!hasSandyEdge(context, "arrival")) failures.push("ARRIVAL_EDGE_NOT_SANDY");
+  if (!hasSandyEdge(context, "far")) failures.push("FAR_EDGE_NOT_SANDY");
+  if (hasCaveEntranceInBeach(context)) failures.push("ENTRANCE_IN_BEACH_ZONE");
+  if (hasEnemyInBeach(context)) failures.push("ENEMY_IN_BEACH_ZONE");
 
   let reachable = null;
   if (failures.length === 0) {
@@ -35,6 +40,34 @@ export function validateGeneratedIsland(context) {
   context.diagnostics.metrics = metrics;
   context.diagnostics.reachable = reachable;
   return { ok: failures.length === 0, failures, metrics };
+}
+
+function hasSandyEdge(context, side) {
+  const edge = context.recipe.edgeProfiles[side];
+  const startX = side === "arrival"
+    ? context.profile.startX
+    : context.definition.width - context.profile.endMargin - edge.width;
+  for (let x = startX; x < startX + edge.width; x += 1) {
+    if (context.tileMap.getTile(x, context.surfaceHeights[x]) !== "sand") return false;
+  }
+  return true;
+}
+
+function hasCaveEntranceInBeach(context) {
+  const arrivalEnd = context.profile.startX + context.recipe.edgeProfiles.arrival.width;
+  const farStart = context.definition.width - context.profile.endMargin - context.recipe.edgeProfiles.far.width;
+  return context.caveGraph.nodes
+    .filter((node) => node.type === "SURFACE_ENTRANCE")
+    .some((node) => node.centerX < arrivalEnd || node.centerX >= farStart);
+}
+
+function hasEnemyInBeach(context) {
+  const arrivalEnd = context.profile.startX + context.recipe.edgeProfiles.arrival.width;
+  const farStart = context.definition.width - context.profile.endMargin - context.recipe.edgeProfiles.far.width;
+  return context.enemies.some((enemy) => {
+    const tileX = Math.floor(enemy.x / CONFIG.TILE_SIZE);
+    return tileX < arrivalEnd || tileX >= farStart;
+  });
 }
 
 function isNodeTypeReachable(context, reachable, type) {

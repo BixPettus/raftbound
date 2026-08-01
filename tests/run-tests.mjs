@@ -147,7 +147,7 @@ function testArrivalBeachMeetsRaftDeck() {
 
   assert.equal(firstBeachTileX, 32);
   assert.equal(raftDeckY - beachTopY, CONFIG.RAFT_SUBMERGED_TILES * CONFIG.TILE_SIZE);
-  assert.equal(island.tileMap.getTile(firstBeachTileX, island.seaLevelTile - 1), "grass");
+  assert.equal(island.tileMap.getTile(firstBeachTileX, island.seaLevelTile - 1), "sand");
   assert.equal(island.tileMap.isSolidTile(firstBeachTileX - 1, island.seaLevelTile - 1), false);
 }
 
@@ -395,11 +395,11 @@ function testIslandNoiseCavesAndOres() {
   assert.equal(iron > 0, true);
 }
 
-function testGenerationV3DeterminismAndDimensions() {
+function testGenerationV4DeterminismAndDimensions() {
   const options = { seed: "v3-deterministic", biome: "temperate", size: "medium", generationVersion: CONFIG.GENERATION_VERSION };
   const a = generateIsland(options);
   const b = generateIsland(options);
-  assert.equal(a.generationVersion, 3);
+  assert.equal(a.generationVersion, 4);
   assert.equal(a.width, CONFIG.ISLAND_DIMENSIONS.medium.width);
   assert.equal(a.height, CONFIG.ISLAND_DIMENSIONS.medium.height);
   assert.equal(a.seaLevelTile, CONFIG.ISLAND_DIMENSIONS.medium.seaLevelTile);
@@ -500,8 +500,8 @@ function testTerrainDigging() {
   const inventory = new Inventory(4);
   const axe = getItemDefinition("basic_axe");
   const pickaxe = getItemDefinition("basic_pickaxe");
-  const grassX = 32;
-  const grassY = island.seaLevelTile - 1;
+  const grassX = findSurfaceTileX(island, "grass");
+  const grassY = island.surfaceHeights[grassX];
   assert.equal(island.tileMap.getTile(grassX, grassY), "grass");
   assert.equal(tryDigTile(island.tileMap, grassX, grassY, axe, inventory).ok, false);
   const grassResult = tryDigTile(island.tileMap, grassX, grassY, pickaxe, inventory);
@@ -515,6 +515,14 @@ function testTerrainDigging() {
   assert.equal(stoneResult.ok, true);
   assert.equal(island.tileMap.getTile(grassX, stoneY), "air");
   assert.equal(inventory.countItem("stone") >= 1, true);
+}
+
+function findSurfaceTileX(island, tileId) {
+  for (let x = 32; x < island.width - 18; x += 1) {
+    const y = island.surfaceHeights[x];
+    if (island.tileMap.getTile(x, y) === tileId) return x;
+  }
+  throw new Error(`No surface tile found: ${tileId}`);
 }
 
 function testTileDamageAccumulatesBeforeBreaking() {
@@ -791,7 +799,7 @@ const tests = [
   testPointerDownIsCanonicalAndNotDebounced,
   testIslandGeneration,
   testIslandNoiseCavesAndOres,
-  testGenerationV3DeterminismAndDimensions,
+  testGenerationV4DeterminismAndDimensions,
   testGenerationV3CaveGraphRequirements,
   testGenerationV3WaterMask,
   testTraversalCannotCrossSealedWall,

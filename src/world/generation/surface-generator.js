@@ -15,7 +15,7 @@ export function generateSurface(context) {
     const broad = Math.sin(t * Math.PI * 2.4 + random.range(-0.5, 0.5)) * 3.2;
     const medium = Math.sin(t * Math.PI * 8.5 + random.range(-1, 1)) * 1.3;
     const target = Math.round(seaLevelTile - 1 - envelope * (7 + broad) - medium);
-    const maxStep = x < startX + context.profile.arrivalFlatTiles ? 0 : 1;
+    const maxStep = x < startX + context.recipe.edgeProfiles.arrival.width ? 0 : 1;
     previous = clamp(target, previous - maxStep, previous + maxStep);
     context.surfaceHeights[x] = clamp(previous, seaLevelTile - 13, seaLevelTile - 1);
   }
@@ -26,7 +26,7 @@ export function generateSurface(context) {
 function enforceArrival(context) {
   const { seaLevelTile } = context.definition;
   const startX = context.profile.startX;
-  const end = startX + context.profile.arrivalFlatTiles;
+  const end = startX + context.recipe.edgeProfiles.arrival.width;
   for (let x = startX; x <= end; x += 1) {
     context.surfaceHeights[x] = seaLevelTile - 1;
   }

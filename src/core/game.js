@@ -1,6 +1,7 @@
 import { CONFIG, encounterDelay, encounterInterval } from "../config.js?v=terrain-inventory-4";
 import { Camera } from "./camera.js";
 import { GAME_STATES, GameStateController } from "./game-state.js";
+import { GameClock } from "./game-clock.js";
 import { Input } from "./input.js?v=terrain-inventory-4";
 import { Renderer } from "./renderer.js?v=terrain-inventory-4";
 import { EventBus } from "./event-bus.js";
@@ -33,6 +34,7 @@ export class Game {
     this.events = new EventBus();
     this.saveManager = new SaveManager();
     this.input = new Input(canvas);
+    this.clock = new GameClock();
     this.camera = new Camera(canvas);
     this.renderer = new Renderer(canvas);
     this.raft = Raft.createInitial();
@@ -53,6 +55,9 @@ export class Game {
     this.contextPrompt = "";
     this.saveError = null;
     this.currentBiome = null;
+    this.simulationCommands = [];
+    this.lastFrameStepCount = 0;
+    this.lastFrameAccumulator = 0;
 
     this.ui = {
       menu: new MenuUI(elements.menu, this),
@@ -68,24 +73,53 @@ export class Game {
   }
 
   start() {
-    let lastTime = performance.now();
-    let accumulator = 0;
     const frame = (time) => {
-      const rawDt = Math.min(CONFIG.MAX_FRAME_TIME, (time - lastTime) / 1000);
-      lastTime = time;
-      accumulator += rawDt;
       this.camera.resizeToDisplay();
-      this.input.beginFrame(this.camera);
-      this.handleGlobalInput();
-      while (accumulator >= CONFIG.FIXED_TIMESTEP) {
-        this.update(CONFIG.FIXED_TIMESTEP);
-        accumulator -= CONFIG.FIXED_TIMESTEP;
+      this.input.capturePointerPosition(this.camera);
+      const frameResult = this.clock.advance(time);
+      this.lastFrameStepCount = frameResult.steps;
+      this.lastFrameAccumulator = frameResult.accumulator;
+      for (let i = 0; i < frameResult.steps; i += 1) {
+        const tickInput = this.input.beginTick(this.clock.nextTickTime());
+        this.routeInput(tickInput);
+        this.update(frameResult.fixedTimestep, tickInput);
+        this.input.endTick(tickInput);
+        this.clock.commitTick();
       }
-      this.render();
-      this.input.endFrame();
+      this.render(frameResult.alpha);
       requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);
+  }
+
+  advanceFrame(deltaSeconds) {
+    this.camera.resizeToDisplay();
+    this.input.capturePointerPosition(this.camera);
+    if (this.clock.lastTime == null) this.clock.lastTime = 0;
+    const now = (this.clock.lastTime ?? 0) + deltaSeconds * 1000;
+    const frameResult = this.clock.advance(now);
+    this.lastFrameStepCount = frameResult.steps;
+    this.lastFrameAccumulator = frameResult.accumulator;
+    for (let i = 0; i < frameResult.steps; i += 1) {
+      const tickInput = this.input.beginTick(this.clock.nextTickTime());
+      this.routeInput(tickInput);
+      this.update(frameResult.fixedTimestep, tickInput);
+      this.input.endTick(tickInput);
+      this.clock.commitTick();
+    }
+    return frameResult;
+  }
+
+  advanceTicks(count) {
+    const frameResult = this.clock.advanceTicks(count);
+    for (let i = 0; i < frameResult.steps; i += 1) {
+      const tickInput = this.input.beginTick(this.clock.nextTickTime());
+      this.routeInput(tickInput);
+      this.update(frameResult.fixedTimestep, tickInput);
+      this.input.endTick(tickInput);
+      this.clock.commitTick();
+    }
+    return frameResult;
   }
 
   bindLifecycle() {
@@ -112,6 +146,8 @@ export class Game {
     this.dialog = null;
     this.state = new GameStateController(GAME_STATES.MAIN_MENU);
     this.state.transition(GAME_STATES.SAILING);
+    this.clock = new GameClock();
+    this.input.clearAll();
     this.ui.menu.hide();
     this.canvas.focus?.({ preventScroll: true });
     this.saveManager.save(this);
@@ -153,11 +189,13 @@ export class Game {
     this.pendingEncounter = null;
     this.inventoryOpen = false;
     this.dialog = null;
+    this.clock = new GameClock();
+    this.input.clearAll();
     this.canvas.focus?.({ preventScroll: true });
   }
 
-  handleGlobalInput() {
-    if (this.input.consumePressed("Escape")) {
+  routeInput(tickInput) {
+    if (tickInput.consumePressed("Escape")) {
       if (this.dialog) this.dialog = null;
       else if (this.inventoryOpen) this.closeInventory();
       else if (this.state.current === GAME_STATES.PAUSED) this.state.resume();
@@ -167,22 +205,58 @@ export class Game {
       }
     }
     if (this.state.current === GAME_STATES.MAIN_MENU || this.state.current === GAME_STATES.PAUSED) return;
-    if (this.input.consumePressed("KeyI") || this.input.consumePressed("Tab")) this.toggleInventory();
-    if (this.input.consumePressed("KeyB")) this.buildingSystem.toggle();
-    if (this.input.consumePressed("KeyR")) this.buildingSystem.cycle();
+    if (tickInput.consumePressed("KeyI") || tickInput.consumePressed("Tab")) this.toggleInventory();
+    if (this.isGameplayBlockedByContext()) return;
+    if (tickInput.consumePressed("KeyB")) this.enqueueCommand({ type: "toggle_build" });
+    if (tickInput.consumePressed("KeyR")) this.enqueueCommand({ type: "cycle_build" });
     for (let i = 1; i <= 9; i += 1) {
-      if (this.input.consumePressed(`Digit${i}`)) this.player.hotbar.select(i - 1);
+      if (tickInput.consumePressed(`Digit${i}`)) this.enqueueCommand({ type: "select_hotbar", index: i - 1 });
     }
-    if (this.input.mouse.wheelDelta !== 0) this.player.hotbar.cycle(this.input.mouse.wheelDelta > 0 ? 1 : -1);
-    if (this.input.consumeSecondaryClick()) this.buildingSystem.cancel();
-    if (this.input.consumePressed("KeyE")) this.interact();
-    if (this.input.consumePrimaryClick()) this.handlePrimaryAction();
+    if (tickInput.mouse.wheelDelta !== 0) this.enqueueCommand({ type: "cycle_hotbar", direction: tickInput.mouse.wheelDelta > 0 ? 1 : -1 });
+    if (tickInput.consumeSecondaryClick()) this.enqueueCommand({ type: "cancel_build" });
+    if (tickInput.consumePressed("KeyE")) this.enqueueCommand({ type: "interact" });
+    if (tickInput.consumePrimaryClick()) {
+      this.enqueueCommand({
+        type: "primary_action",
+        worldX: tickInput.mouse.worldX,
+        worldY: tickInput.mouse.worldY
+      });
+    }
   }
 
-  update(dt) {
+  enqueueCommand(command) {
+    this.simulationCommands.push(command);
+  }
+
+  executeSimulationCommands() {
+    const commands = this.simulationCommands;
+    this.simulationCommands = [];
+    for (const command of commands) {
+      if (this.isGameplayBlockedByContext() && command.type !== "select_hotbar") continue;
+      if (command.type === "toggle_build") this.buildingSystem.toggle();
+      else if (command.type === "cycle_build") this.buildingSystem.cycle();
+      else if (command.type === "select_hotbar") this.player.hotbar.select(command.index);
+      else if (command.type === "cycle_hotbar") this.player.hotbar.cycle(command.direction);
+      else if (command.type === "cancel_build") this.buildingSystem.cancel();
+      else if (command.type === "interact") this.interact();
+      else if (command.type === "primary_action") this.handlePrimaryAction(command);
+    }
+  }
+
+  isGameplayBlockedByContext() {
+    return Boolean(this.dialog || this.inventoryOpen || this.state.current === GAME_STATES.ISLAND_TRANSITION || this.state.current === GAME_STATES.PLAYER_DEAD);
+  }
+
+  isSimulationPausedByContext() {
+    return Boolean(this.dialog || this.inventoryOpen);
+  }
+
+  update(dt, tickInput = this.input) {
     this.contextPrompt = "";
     this.input.update(dt);
     if (this.state.current === GAME_STATES.PAUSED || this.state.current === GAME_STATES.MAIN_MENU) return;
+    this.executeSimulationCommands();
+    if (this.isSimulationPausedByContext()) return;
     if (this.state.current === GAME_STATES.PLAYER_DEAD) {
       this.transitionTimer -= dt;
       if (this.transitionTimer <= 0) this.respawnPlayer();
@@ -199,7 +273,7 @@ export class Game {
     if (this.state.current === GAME_STATES.ISLAND_TRANSITION) this.updateTransition(dt);
 
     if (this.state.current !== GAME_STATES.ISLAND_TRANSITION) {
-      this.player.update(dt, this.input, {
+      this.player.update(dt, tickInput, {
         tileMap: this.world.tileMap,
         waterSystem: this.world.waterSystem,
         collisionWorld: this.world.getCollisionWorld()
@@ -244,8 +318,7 @@ export class Game {
     this.world.setIsland(island);
     this.raft.setDock(island.raftDockTile.tileX, island.raftDockTile.tileY);
     const spawn = this.raft.getSpawnWorldPosition();
-    this.player.x = spawn.x;
-    this.player.y = spawn.y;
+    this.teleportPlayer(spawn.x, spawn.y);
     this.player.vx = 0;
     this.player.vy = 0;
     this.currentBiome = this.acceptedEncounter.biome;
@@ -302,14 +375,17 @@ export class Game {
     if (storage) {
       this.openStorageId = storage.id;
       this.inventoryOpen = true;
+      this.input.clearAll();
       return;
     }
     if (this.isPlayerOnRaft()) this.showSailAwayDialog();
   }
 
-  handlePrimaryAction() {
+  handlePrimaryAction(command = this.input.mouse) {
+    const worldX = command.worldX ?? this.input.mouse.worldX;
+    const worldY = command.worldY ?? this.input.mouse.worldY;
     if (this.buildingSystem.enabled) {
-      const result = this.buildingSystem.placeSelected(this.input.mouse.worldX, this.input.mouse.worldY, this.player.inventory);
+      const result = this.buildingSystem.placeSelected(worldX, worldY, this.player.inventory);
       if (result.ok) {
         this.player.startAction("build");
         this.saveManager.save(this);
@@ -327,7 +403,7 @@ export class Game {
     }
     if (item.tileId && this.state.current === GAME_STATES.ISLAND_ANCHORED) {
       this.player.startAction("build");
-      if (this.tryPlaceTerrainTile(item, slot)) this.saveManager.save(this);
+      if (this.tryPlaceTerrainTile(item, slot, worldX, worldY)) this.saveManager.save(this);
       return;
     }
     if (item.toolType || item.category === "weapon") this.player.startAction(actionTypeForItem(item));
@@ -339,7 +415,7 @@ export class Game {
       return;
     }
     const activeResources = this.world.island.resources.filter((node) => !node.destroyed);
-    const node = nearestInRange(activeResources, { center: () => ({ x: this.input.mouse.worldX, y: this.input.mouse.worldY }) }, 72)
+    const node = nearestInRange(activeResources, { center: () => ({ x: worldX, y: worldY }) }, 72)
       ?? nearestInRange(activeResources, this.player, interactionRange);
     if (node) {
       const result = node.hit(item, this.player.inventory);
@@ -349,19 +425,19 @@ export class Game {
       }
       return;
     }
-    if (this.tryDigTerrain(item)) this.saveManager.save(this);
+    if (this.tryDigTerrain(item, worldX, worldY)) this.saveManager.save(this);
   }
 
-  tryDigTerrain(item) {
+  tryDigTerrain(item, worldX = this.input.mouse.worldX, worldY = this.input.mouse.worldY) {
     if (item.toolType !== "pickaxe") return false;
-    const target = this.findTargetTerrainTile();
+    const target = this.findTargetTerrainTile(worldX, worldY);
     if (!target) return false;
     if (!this.isTileInInteractionRange(target.tileX, target.tileY)) return false;
     return tryDigTile(this.world.tileMap, target.tileX, target.tileY, item, this.player.inventory).ok;
   }
 
-  tryPlaceTerrainTile(item, slot) {
-    const target = worldToTile(this.input.mouse.worldX, this.input.mouse.worldY);
+  tryPlaceTerrainTile(item, slot, worldX = this.input.mouse.worldX, worldY = this.input.mouse.worldY) {
+    const target = worldToTile(worldX, worldY);
     if (!this.isTileInInteractionRange(target.tileX, target.tileY)) return false;
     if (this.playerOverlapsTile(target.tileX, target.tileY)) return false;
     const result = tryPlaceTile(this.world.tileMap, target.tileX, target.tileY, item.tileId);
@@ -370,8 +446,8 @@ export class Game {
     return true;
   }
 
-  findTargetTerrainTile() {
-    const mouseTile = worldToTile(this.input.mouse.worldX, this.input.mouse.worldY);
+  findTargetTerrainTile(worldX = this.input.mouse.worldX, worldY = this.input.mouse.worldY) {
+    const mouseTile = worldToTile(worldX, worldY);
     const candidates = [
       mouseTile,
       { tileX: mouseTile.tileX, tileY: mouseTile.tileY + 1 }
@@ -412,11 +488,13 @@ export class Game {
   toggleInventory() {
     this.inventoryOpen = !this.inventoryOpen;
     if (!this.inventoryOpen) this.openStorageId = null;
+    this.input.clearAll();
   }
 
   closeInventory() {
     this.inventoryOpen = false;
     this.openStorageId = null;
+    this.input.clearAll();
   }
 
   depositBasicResources() {
@@ -479,6 +557,7 @@ export class Game {
         { label: "Stay", run: () => { this.dialog = null; } }
       ]
     };
+    this.input.clearAll();
   }
 
   sailAway() {
@@ -487,8 +566,7 @@ export class Game {
     this.world.clearIsland();
     this.raft.setDock(8, CONFIG.SEA_LEVEL_TILE + CONFIG.RAFT_WATERLINE_TILE_OFFSET);
     const spawn = this.raft.getSpawnWorldPosition();
-    this.player.x = spawn.x;
-    this.player.y = spawn.y;
+    this.teleportPlayer(spawn.x, spawn.y);
     this.player.vx = 0;
     this.player.vy = 0;
     this.currentBiome = null;
@@ -505,8 +583,7 @@ export class Game {
 
   respawnPlayer() {
     const spawn = this.raft.getSpawnWorldPosition();
-    this.player.x = spawn.x;
-    this.player.y = spawn.y;
+    this.teleportPlayer(spawn.x, spawn.y);
     this.player.vx = 0;
     this.player.vy = 0;
     this.player.health = CONFIG.MAX_HEALTH;
@@ -528,12 +605,18 @@ export class Game {
     return grid.gridX >= -1 && grid.gridX <= 7 && grid.gridY >= -3 && grid.gridY <= 2;
   }
 
+  teleportPlayer(x, y) {
+    this.player.x = x;
+    this.player.y = y;
+    this.player.syncPreviousPosition();
+  }
+
   serializeCurrentIsland() {
     return serializeIsland(this.world.island);
   }
 
-  render() {
-    this.renderer.render(this);
+  render(alpha = 1) {
+    this.renderer.render(this, alpha);
     this.ui.hud.render();
     this.ui.inventory.render();
     this.ui.crafting.renderInto();

@@ -5,6 +5,8 @@ export class Entity {
     this.id = id ?? createEntityId(this.constructor.name.toLowerCase());
     this.x = x;
     this.y = y;
+    this.previousX = x;
+    this.previousY = y;
     this.width = width;
     this.height = height;
     this.vx = 0;
@@ -18,6 +20,24 @@ export class Entity {
 
   center() {
     return { x: this.x + this.width / 2, y: this.y + this.height / 2 };
+  }
+
+  recordPreviousPosition() {
+    this.previousX = this.x;
+    this.previousY = this.y;
+  }
+
+  syncPreviousPosition() {
+    this.previousX = this.x;
+    this.previousY = this.y;
+  }
+
+  getRenderPosition(alpha = 1) {
+    const t = Math.max(0, Math.min(1, alpha));
+    return {
+      x: this.previousX + (this.x - this.previousX) * t,
+      y: this.previousY + (this.y - this.previousY) * t
+    };
   }
 }
 

@@ -12,22 +12,33 @@ export class Renderer {
     this.ctx.imageSmoothingEnabled = false;
   }
 
-  render(game) {
+  render(game, alpha = 1) {
     const ctx = this.ctx;
+    const ratio = game.camera.devicePixelRatio || 1;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.imageSmoothingEnabled = false;
+    const renderGame = {
+      ...game,
+      camera: game.camera.getPresentationState(alpha),
+      canvas: {
+        ...game.canvas,
+        width: game.camera.logicalWidth,
+        height: game.camera.logicalHeight
+      }
+    };
     const biome = game.currentBiome;
-    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    drawSky(ctx, this.canvas, biome?.palette?.sky ?? "#84d2ef");
-    drawOcean(ctx, game);
-    drawTiles(ctx, game);
-    drawRaft(ctx, game);
-    drawWaterOverlay(ctx, game);
-    drawResources(ctx, game);
-    drawEnemies(ctx, game);
-    drawInteractionHighlights(ctx, game);
-    drawPlayer(ctx, game);
-    drawBuildPreview(ctx, game);
-    drawPrompts(ctx, game);
+    ctx.clearRect(0, 0, renderGame.canvas.width, renderGame.canvas.height);
+    drawSky(ctx, renderGame.canvas, biome?.palette?.sky ?? "#84d2ef");
+    drawOcean(ctx, renderGame);
+    drawTiles(ctx, renderGame);
+    drawRaft(ctx, renderGame);
+    drawWaterOverlay(ctx, renderGame);
+    drawResources(ctx, renderGame);
+    drawEnemies(ctx, renderGame);
+    drawInteractionHighlights(ctx, renderGame);
+    drawPlayer(ctx, renderGame, alpha);
+    drawBuildPreview(ctx, renderGame);
+    drawPrompts(ctx, renderGame);
   }
 }
 
@@ -178,9 +189,10 @@ function drawEnemies(ctx, game) {
   }
 }
 
-function drawPlayer(ctx, game) {
+function drawPlayer(ctx, game, alpha = 1) {
   const player = game.player;
-  const screen = worldToScreen(player.x, player.y, game.camera);
+  const renderPosition = player.getRenderPosition?.(alpha) ?? { x: player.x, y: player.y };
+  const screen = worldToScreen(renderPosition.x, renderPosition.y, game.camera);
   const state = player.getAnimationState();
   const selected = player.hotbar.getSelectedHotbarItem();
   const selectedItem = selected ? getItemDefinition(selected.itemId) : null;
@@ -192,7 +204,7 @@ function drawPlayer(ctx, game) {
   const playerActionProgress = player.actionTimer > 0 ? 1 - player.actionTimer / CONFIG.PLAYER_ACTION_SECONDS : 0;
   const inputActionProgress = game.input.getPrimaryClickFeedbackProgress();
   const actionProgress = Math.max(playerActionProgress, inputActionProgress);
-  const visualScale = player.height / 56;
+  const visualScale = CONFIG.PLAYER_SPRITE_HEIGHT / 56;
 
   ctx.save();
   if (player.invulnerability > 0 && Math.floor(player.animationTime * 18) % 2 === 0) ctx.globalAlpha = 0.64;

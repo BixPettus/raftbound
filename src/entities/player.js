@@ -19,6 +19,7 @@ export class Player extends Entity {
     this.invulnerability = 0;
     this.coyoteTimer = 0;
     this.jumpBufferTimer = 0;
+    this.jumpHeldLastTick = false;
     this.animationTime = 0;
     this.actionTimer = 0;
     this.actionType = null;
@@ -35,6 +36,7 @@ export class Player extends Entity {
   }
 
   update(dt, input, context) {
+    this.recordPreviousPosition();
     this.animationTime += dt;
     this.invulnerability = Math.max(0, this.invulnerability - dt);
     this.actionTimer = Math.max(0, this.actionTimer - dt);
@@ -47,6 +49,8 @@ export class Player extends Entity {
     const down = input.isDown("KeyS") || input.isDown("ArrowDown");
     const jumpPressed = input.consumePressed("Space");
     const holdJump = input.isDown("Space");
+    const jumpReleased = this.jumpHeldLastTick && !holdJump;
+    this.jumpHeldLastTick = holdJump;
     this.jumpBufferTimer = Math.max(0, this.jumpBufferTimer - dt);
     if (jumpPressed) this.jumpBufferTimer = CONFIG.PLAYER_JUMP_BUFFER_SECONDS;
     this.coyoteTimer = this.onGround ? CONFIG.PLAYER_COYOTE_SECONDS : Math.max(0, this.coyoteTimer - dt);
@@ -71,7 +75,12 @@ export class Player extends Entity {
       if (down) this.vy += CONFIG.SWIM_FORCE * dt * 2;
       this.vy = Math.max(-CONFIG.MAX_SWIM_SPEED, Math.min(CONFIG.MAX_SWIM_SPEED, this.vy));
     } else {
-      this.vy += CONFIG.GRAVITY * dt;
+      const gravityMultiplier = this.vy > 50
+        ? CONFIG.FALL_GRAVITY_MULTIPLIER
+        : Math.abs(this.vy) < 60
+          ? CONFIG.JUMP_APEX_GRAVITY_MULTIPLIER
+          : 1;
+      this.vy += CONFIG.GRAVITY * gravityMultiplier * dt;
       if (this.jumpBufferTimer > 0 && this.coyoteTimer > 0) {
         this.vy = -CONFIG.JUMP_FORCE;
         this.onGround = false;
@@ -79,6 +88,8 @@ export class Player extends Entity {
         this.jumpBufferTimer = 0;
         jumpedThisStep = true;
       }
+      if (jumpReleased && this.vy < 0) this.vy *= CONFIG.JUMP_CUT_MULTIPLIER;
+      this.vy = Math.max(-CONFIG.PLAYER_MAX_RISE_SPEED, Math.min(CONFIG.PLAYER_MAX_FALL_SPEED, this.vy));
     }
 
     this.lastGroundVy = this.vy;
@@ -94,23 +105,43 @@ export class Player extends Entity {
       }
     }
     if (result.landed && this.lastGroundVy > CONFIG.FALL_DAMAGE_THRESHOLD) {
-      this.damage(Math.floor((this.lastGroundVy - CONFIG.FALL_DAMAGE_THRESHOLD) / 40));
+      this.applyDamage({
+        amount: Math.floor((this.lastGroundVy - CONFIG.FALL_DAMAGE_THRESHOLD) / 40),
+        type: "falling",
+        grantsInvulnerability: false
+      });
     }
 
     const headUnder = context.waterSystem.isHeadUnderwater(this, context.tileMap);
     if (headUnder) {
       this.oxygen = Math.max(0, this.oxygen - CONFIG.OXYGEN_DRAIN_PER_SECOND * dt);
-      if (this.oxygen <= 0) this.damage(CONFIG.DROWN_DAMAGE_PER_SECOND * dt);
+      if (this.oxygen <= 0) {
+        this.applyDamage({
+          amount: CONFIG.DROWN_DAMAGE_PER_SECOND * dt,
+          type: "drowning",
+          grantsInvulnerability: false
+        });
+      }
     } else {
       this.oxygen = Math.min(CONFIG.MAX_OXYGEN, this.oxygen + CONFIG.OXYGEN_REFILL_PER_SECOND * dt);
     }
   }
 
   damage(amount) {
-    if (this.invulnerability > 0 || amount <= 0) return;
+    this.applyDamage({
+      amount,
+      type: "contact",
+      grantsInvulnerability: true,
+      invulnerabilityGroup: "combat"
+    });
+  }
+
+  applyDamage({ amount, grantsInvulnerability = true } = {}) {
+    if ((grantsInvulnerability && this.invulnerability > 0) || amount <= 0) return false;
     this.health = Math.max(0, this.health - amount);
-    this.invulnerability = 0.35;
+    if (grantsInvulnerability) this.invulnerability = 0.35;
     this.hurtTimer = 0.18;
+    return true;
   }
 
   heal(amount) {

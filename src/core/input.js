@@ -5,12 +5,13 @@ export class Input {
   constructor(canvas) {
     this.canvas = canvas;
     this.down = new Set();
-    this.queuedPressed = new Set();
-    this.framePressed = new Set();
-    this.queuedMouse = { leftPressed: false, rightPressed: false, wheelDelta: 0 };
-    this.mouse = { x: 0, y: 0, worldX: 0, worldY: 0, leftPressed: false, rightPressed: false, wheelDelta: 0 };
-    this.lastPointerPressAt = -Infinity;
+    this.queuedPressed = [];
+    this.mouseDown = new Set();
+    this.queuedPointerPresses = [];
+    this.queuedWheelDelta = 0;
+    this.mouse = { x: 0, y: 0, worldX: 0, worldY: 0, leftDown: false, rightDown: false, wheelDelta: 0 };
     this.primaryClickFeedbackTimer = 0;
+    this.currentTick = null;
     this.bind();
   }
 
@@ -18,28 +19,27 @@ export class Input {
     window.addEventListener("keydown", (event) => {
       const code = normalizeKeyCode(event);
       if (["Space", "Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(code)) event.preventDefault();
-      if (!this.down.has(code)) this.queuedPressed.add(code);
+      if (!this.down.has(code)) this.queuedPressed.push({ code, time: event.timeStamp ?? performance.now() });
       this.down.add(code);
     });
     window.addEventListener("keyup", (event) => this.down.delete(normalizeKeyCode(event)));
-    const queueWindowPointerPress = (event) => {
-      if (event.target === this.canvas) this.queuePointerPress(event);
-    };
-    window.addEventListener("pointerdown", queueWindowPointerPress, true);
-    window.addEventListener("mousedown", queueWindowPointerPress, true);
-    window.addEventListener("click", queueWindowPointerPress, true);
-    this.canvas.addEventListener("mousemove", (event) => {
+    window.addEventListener("blur", () => this.clearAll());
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") this.clearAll();
+      });
+    }
+    this.canvas.addEventListener("pointermove", (event) => {
       this.mouse.x = event.clientX;
       this.mouse.y = event.clientY;
     });
-    const queuePointerPress = (event) => this.queuePointerPress(event);
-    this.canvas.addEventListener("pointerdown", queuePointerPress);
-    this.canvas.addEventListener("mousedown", queuePointerPress);
-    this.canvas.addEventListener("click", queuePointerPress);
+    this.canvas.addEventListener("pointerdown", (event) => this.queuePointerPress(event));
+    this.canvas.addEventListener("pointerup", (event) => this.releasePointerButton(event));
+    this.canvas.addEventListener("pointercancel", (event) => this.releasePointerButton(event));
     this.canvas.addEventListener("contextmenu", (event) => event.preventDefault());
     this.canvas.addEventListener("wheel", (event) => {
       event.preventDefault();
-      this.queuedMouse.wheelDelta += Math.sign(event.deltaY);
+      this.queuedWheelDelta += Math.sign(event.deltaY);
     }, { passive: false });
   }
 
@@ -48,15 +48,18 @@ export class Input {
     const isLeft = button <= 0;
     const isRight = button === 2;
     if (!isLeft && !isRight) return;
-    const now = performance.now();
-    if (now - this.lastPointerPressAt < 180) return;
-    this.lastPointerPressAt = now;
+    event.preventDefault?.();
     this.canvas.focus?.({ preventScroll: true });
+    this.canvas.setPointerCapture?.(event.pointerId);
     this.mouse.x = event.clientX;
     this.mouse.y = event.clientY;
-    if (isLeft) this.queuedMouse.leftPressed = true;
-    if (isRight) this.queuedMouse.rightPressed = true;
+    this.mouseDown.add(button);
+    this.queuedPointerPresses.push({ button, pointerId: event.pointerId ?? 0, time: event.timeStamp ?? performance.now() });
     if (isLeft) this.primaryClickFeedbackTimer = CONFIG.PRIMARY_CLICK_FEEDBACK_SECONDS;
+  }
+
+  releasePointerButton(event) {
+    this.mouseDown.delete(event.button ?? 0);
   }
 
   update(dt) {
@@ -68,23 +71,82 @@ export class Input {
     return 1 - this.primaryClickFeedbackTimer / CONFIG.PRIMARY_CLICK_FEEDBACK_SECONDS;
   }
 
-  beginFrame(camera) {
-    this.framePressed = new Set(this.queuedPressed);
-    this.queuedPressed.clear();
-    this.mouse.leftPressed = this.queuedMouse.leftPressed;
-    this.mouse.rightPressed = this.queuedMouse.rightPressed;
-    this.mouse.wheelDelta = this.queuedMouse.wheelDelta;
-    this.queuedMouse.wheelDelta = 0;
+  capturePointerPosition(camera) {
     const world = screenToWorld(this.mouse.x, this.mouse.y, camera, this.canvas);
     this.mouse.worldX = world.x;
     this.mouse.worldY = world.y;
   }
 
-  endFrame() {
-    this.framePressed.clear();
-    this.mouse.leftPressed = false;
-    this.mouse.rightPressed = false;
+  beginTick(tickTime = 0) {
+    const tick = new TickInput({
+      pressed: this.queuedPressed.map((event) => event.code),
+      down: this.down,
+      pointerPresses: this.queuedPointerPresses,
+      pointerDown: this.mouseDown,
+      wheelDelta: this.queuedWheelDelta,
+      mouse: this.mouse,
+      tickTime
+    });
+    this.queuedPressed = [];
+    this.queuedPointerPresses = [];
+    this.queuedWheelDelta = 0;
+    this.currentTick = tick;
+    return tick;
+  }
+
+  endTick(tickInput) {
+    if (this.currentTick === tickInput) this.currentTick = null;
     this.mouse.wheelDelta = 0;
+  }
+
+  clearAll() {
+    this.down.clear();
+    this.queuedPressed = [];
+    this.mouseDown.clear();
+    this.queuedPointerPresses = [];
+    this.queuedWheelDelta = 0;
+    this.currentTick = null;
+  }
+
+  isDown(code) {
+    return this.currentTick?.isDown(code) ?? this.down.has(code);
+  }
+
+  consumePressed(code) {
+    return this.currentTick?.consumePressed(code) ?? false;
+  }
+
+  consumePrimaryClick() {
+    return this.currentTick?.consumePrimaryClick() ?? false;
+  }
+
+  consumeSecondaryClick() {
+    return this.currentTick?.consumeSecondaryClick() ?? false;
+  }
+
+  get queueSize() {
+    return this.queuedPressed.length + this.queuedPointerPresses.length;
+  }
+}
+
+export class TickInput {
+  constructor({ pressed, down, pointerPresses, pointerDown, wheelDelta, mouse, tickTime }) {
+    this.tickTime = tickTime;
+    this.pressed = new Set(pressed);
+    this.down = new Set(down);
+    this.pointerPresses = pointerPresses.map((event) => ({ ...event }));
+    this.pointerDown = new Set(pointerDown);
+    this.mouse = {
+      x: mouse.x,
+      y: mouse.y,
+      worldX: mouse.worldX,
+      worldY: mouse.worldY,
+      leftDown: pointerDown.has(0),
+      rightDown: pointerDown.has(2),
+      wheelDelta,
+      leftPressed: pointerPresses.some((event) => event.button === 0),
+      rightPressed: pointerPresses.some((event) => event.button === 2)
+    };
   }
 
   isDown(code) {
@@ -92,22 +154,24 @@ export class Input {
   }
 
   consumePressed(code) {
-    if (!this.framePressed.has(code)) return false;
-    this.framePressed.delete(code);
+    if (!this.pressed.has(code)) return false;
+    this.pressed.delete(code);
     return true;
   }
 
   consumePrimaryClick() {
-    if (!this.queuedMouse.leftPressed) return false;
-    this.queuedMouse.leftPressed = false;
-    this.mouse.leftPressed = false;
+    const index = this.pointerPresses.findIndex((event) => event.button === 0);
+    if (index === -1) return false;
+    this.pointerPresses.splice(index, 1);
+    this.mouse.leftPressed = this.pointerPresses.some((event) => event.button === 0);
     return true;
   }
 
   consumeSecondaryClick() {
-    if (!this.queuedMouse.rightPressed) return false;
-    this.queuedMouse.rightPressed = false;
-    this.mouse.rightPressed = false;
+    const index = this.pointerPresses.findIndex((event) => event.button === 2);
+    if (index === -1) return false;
+    this.pointerPresses.splice(index, 1);
+    this.mouse.rightPressed = this.pointerPresses.some((event) => event.button === 2);
     return true;
   }
 }

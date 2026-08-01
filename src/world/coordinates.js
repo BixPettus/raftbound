@@ -23,8 +23,8 @@ export function worldToScreen(worldX, worldY, camera) {
 
 export function screenToWorld(screenX, screenY, camera, canvas) {
   const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
+  const scaleX = (camera.logicalWidth ?? rect.width) / rect.width;
+  const scaleY = (camera.logicalHeight ?? rect.height) / rect.height;
   return {
     x: (screenX - rect.left) * scaleX + camera.x,
     y: (screenY - rect.top) * scaleY + camera.y

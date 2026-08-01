@@ -13,6 +13,7 @@ import { SaveManager } from "../src/persistence/save-manager.js";
 import { getItemDefinition } from "../src/items/item-registry.js";
 import { Player } from "../src/entities/player.js";
 import { Input } from "../src/core/input.js";
+import { GameClock } from "../src/core/game-clock.js";
 import { tryDigTile } from "../src/world/terrain-digging.js";
 import { TileMap } from "../src/world/tile-map.js";
 import { moveWithCollision } from "../src/core/physics.js";
@@ -107,12 +108,20 @@ function testArrivalBeachMeetsRaftDeck() {
   assert.equal(island.tileMap.isSolidTile(firstBeachTileX - 1, CONFIG.SEA_LEVEL_TILE - 1), false);
 }
 
-function testPlayerUsesTwoByThreeTileBounds() {
+function testPlayerSeparatesColliderFromSpriteBounds() {
   const raft = Raft.createInitial();
   const player = Player.createNew(raft.getSpawnWorldPosition());
-  assert.equal(player.width, CONFIG.TILE_SIZE * 2);
-  assert.equal(player.height, CONFIG.TILE_SIZE * 3);
-  assert.equal(player.y + player.height, raft.gridToWorld(0, 0).y);
+  assert.equal(player.width, CONFIG.PLAYER_WIDTH);
+  assert.equal(player.height, CONFIG.PLAYER_HEIGHT);
+  assert.equal(CONFIG.PLAYER_SPRITE_WIDTH, CONFIG.TILE_SIZE * 2);
+  assert.equal(CONFIG.PLAYER_SPRITE_HEIGHT, CONFIG.TILE_SIZE * 3);
+  const spawnDeck = raft.querySolidRects({
+    x: player.x,
+    y: player.y + player.height,
+    width: player.width,
+    height: 1
+  })[0];
+  assert.equal(player.y + player.height, spawnDeck.y);
 }
 
 function testPlayerAnimationAndBufferedJump() {
@@ -138,6 +147,58 @@ function testPlayerAnimationAndBufferedJump() {
   assert.equal(player.getAnimationState(), "hurt");
 }
 
+function testDrowningDamageBypassesCombatInvulnerability() {
+  const player = new Player({ x: 0, y: 0, oxygen: 0 });
+  player.invulnerability = 10;
+  const context = {
+    waterSystem: {
+      containsPoint: () => true,
+      isHeadUnderwater: () => true
+    },
+    tileMap: null,
+    collisionWorld: { isSolidTile: () => false }
+  };
+
+  player.update(1, createInput(), context);
+  assert.equal(player.health, CONFIG.MAX_HEALTH - CONFIG.DROWN_DAMAGE_PER_SECOND);
+  assert.equal(player.invulnerability, 9);
+}
+
+function testPlayerFallSpeedIsClamped() {
+  const player = new Player({ x: 0, y: 0 });
+  player.vy = CONFIG.PLAYER_MAX_FALL_SPEED * 4;
+  const context = {
+    waterSystem: {
+      containsPoint: () => false,
+      isHeadUnderwater: () => false
+    },
+    tileMap: null,
+    collisionWorld: { isSolidTile: () => false }
+  };
+
+  player.update(CONFIG.FIXED_TIMESTEP, createInput(), context);
+  assert.equal(player.vy <= CONFIG.PLAYER_MAX_FALL_SPEED, true);
+}
+
+function testJumpReleaseCutsRisingVelocity() {
+  const player = new Player({ x: 0, y: 0 });
+  player.onGround = true;
+  const context = {
+    waterSystem: {
+      containsPoint: () => false,
+      isHeadUnderwater: () => false
+    },
+    tileMap: null,
+    collisionWorld: { isSolidTile: () => false }
+  };
+
+  player.update(CONFIG.FIXED_TIMESTEP, createInput(["Space"], ["Space"]), context);
+  const heldVelocity = player.vy;
+  player.update(CONFIG.FIXED_TIMESTEP, createInput(), context);
+  assert.equal(player.vy > heldVelocity, true);
+  assert.equal(Math.abs(player.vy) < Math.abs(heldVelocity), true);
+}
+
 function testJumpIgnoresSideBlockFace() {
   const tileMap = new TileMap(8, 8, "air", CONFIG.SEA_LEVEL_TILE);
   tileMap.setTile(3, 4, "grass");
@@ -157,7 +218,7 @@ function testPlayerStepsFromRaftOntoBeach() {
   const deckY = raft.gridToWorld(0, 0).y;
   const player = new Player({
     x: beachX * CONFIG.TILE_SIZE - CONFIG.PLAYER_WIDTH - 2,
-    y: deckY - CONFIG.PLAYER_HEIGHT
+    y: beachTopY - CONFIG.PLAYER_HEIGHT
   });
   player.onGround = true;
   player.vx = CONFIG.MAX_RUN_SPEED;
@@ -180,49 +241,83 @@ function testPlayerStepsFromRaftOntoBeach() {
   assert.equal(player.x + player.width > beachX * CONFIG.TILE_SIZE, true);
 }
 
-function testInputQueuesLateFramePresses() {
-  const listeners = {};
-  const canvasListeners = {};
-  globalThis.window = {
-    addEventListener: (type, handler) => {
-      listeners[type] = handler;
-    }
-  };
-  const canvas = {
-    width: 1280,
-    height: 720,
-    focused: false,
-    focus: () => {
-      canvas.focused = true;
-    },
-    addEventListener: (type, handler) => {
-      canvasListeners[type] = handler;
-    },
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1280, height: 720 })
-  };
-  const input = new Input(canvas);
+function testGameClockCapsCatchUpSteps() {
+  const clock = new GameClock({ fixedTimestep: 1 / 60, maxFrameTime: 0.25, maxCatchUpSteps: 8 });
+  assert.equal(clock.advance(0).steps, 0);
+  const stalled = clock.advance(1000);
+  assert.equal(stalled.steps, 8);
+  assert.equal(stalled.alpha, 0);
+}
 
-  input.beginFrame({ x: 0, y: 0 });
-  listeners.keydown({ key: " ", preventDefault: () => {} });
-  canvasListeners.mousedown({ button: 0, clientX: 400, clientY: 240 });
-  input.endFrame();
+function testInputPressSurvivesZeroTickFrames() {
+  const { input, listeners } = createBoundInput();
+  input.capturePointerPosition({ x: 0, y: 0 });
+  listeners.window.keydown({ code: "Space", preventDefault: () => {}, timeStamp: 1 });
+  for (let i = 0; i < 5; i += 1) input.capturePointerPosition({ x: 0, y: 0 });
 
-  input.beginFrame({ x: 0, y: 0 });
-  assert.equal(input.consumePressed("Space"), true);
-  assert.equal(input.consumePrimaryClick(), true);
+  const tick = input.beginTick(1);
+  assert.equal(tick.consumePressed("Space"), true);
+  input.endTick(tick);
+
+  const nextTick = input.beginTick(2);
+  assert.equal(nextTick.consumePressed("Space"), false);
+}
+
+function testInputTapBetweenTicksRegistersOnce() {
+  const { input, listeners } = createBoundInput();
+  listeners.window.keydown({ code: "Space", preventDefault: () => {}, timeStamp: 1 });
+  listeners.window.keyup({ code: "Space" });
+
+  const tick = input.beginTick(1);
+  assert.equal(tick.consumePressed("Space"), true);
+  assert.equal(tick.isDown("Space"), false);
+  input.endTick(tick);
+
+  const nextTick = input.beginTick(2);
+  assert.equal(nextTick.consumePressed("Space"), false);
+}
+
+function testInputHoldDoesNotRepeatPressEdges() {
+  const { input, listeners } = createBoundInput();
+  listeners.window.keydown({ code: "Space", preventDefault: () => {}, timeStamp: 1 });
+  let tick = input.beginTick(1);
+  assert.equal(tick.consumePressed("Space"), true);
+  assert.equal(tick.isDown("Space"), true);
+  input.endTick(tick);
+
+  tick = input.beginTick(2);
+  assert.equal(tick.consumePressed("Space"), false);
+  assert.equal(tick.isDown("Space"), true);
+}
+
+function testInputBlurClearsHeldAndQueuedState() {
+  const { input, listeners } = createBoundInput();
+  listeners.window.keydown({ code: "KeyD", preventDefault: () => {}, timeStamp: 1 });
+  listeners.window.blur();
+
+  const tick = input.beginTick(1);
+  assert.equal(tick.consumePressed("KeyD"), false);
+  assert.equal(tick.isDown("KeyD"), false);
+}
+
+function testPointerDownIsCanonicalAndNotDebounced() {
+  const { input, canvas, listeners } = createBoundInput();
+  assert.equal(listeners.canvas.mousedown, undefined);
+  assert.equal(listeners.canvas.click, undefined);
+
+  listeners.canvas.pointerdown({ button: 0, pointerId: 1, clientX: 400, clientY: 240, preventDefault: () => {}, timeStamp: 1 });
+  listeners.canvas.pointerdown({ button: 2, pointerId: 1, clientX: 400, clientY: 240, preventDefault: () => {}, timeStamp: 2 });
+  listeners.canvas.pointerdown({ button: 0, pointerId: 1, clientX: 410, clientY: 240, preventDefault: () => {}, timeStamp: 3 });
+  input.capturePointerPosition({ x: 10, y: 20 });
+
+  const tick = input.beginTick(1);
+  assert.equal(tick.consumePrimaryClick(), true);
+  assert.equal(tick.consumeSecondaryClick(), true);
+  assert.equal(tick.consumePrimaryClick(), true);
+  assert.equal(tick.consumePrimaryClick(), false);
   assert.equal(canvas.focused, true);
-  assert.deepEqual({ x: input.mouse.worldX, y: input.mouse.worldY }, { x: 400, y: 240 });
-  input.endFrame();
-
-  input.beginFrame({ x: 0, y: 0 });
-  assert.equal(input.consumePressed("Space"), false);
-  assert.equal(input.consumePrimaryClick(), false);
-
-  const clickOnlyInput = new Input(canvas);
-  canvasListeners.click({ button: 0, clientX: 512, clientY: 256 });
-  clickOnlyInput.beginFrame({ x: 0, y: 0 });
-  assert.equal(clickOnlyInput.consumePrimaryClick(), true);
-  assert.deepEqual({ x: clickOnlyInput.mouse.worldX, y: clickOnlyInput.mouse.worldY }, { x: 512, y: 256 });
+  assert.equal(canvas.capturedPointerId, 1);
+  assert.deepEqual({ x: tick.mouse.worldX, y: tick.mouse.worldY }, { x: 420, y: 260 });
 }
 
 function testIslandGeneration() {
@@ -388,11 +483,19 @@ const tests = [
   testBuildPlacementValidity,
   testRaftFloatsAtWaterline,
   testArrivalBeachMeetsRaftDeck,
-  testPlayerUsesTwoByThreeTileBounds,
+  testPlayerSeparatesColliderFromSpriteBounds,
   testPlayerAnimationAndBufferedJump,
+  testDrowningDamageBypassesCombatInvulnerability,
+  testPlayerFallSpeedIsClamped,
+  testJumpReleaseCutsRisingVelocity,
   testJumpIgnoresSideBlockFace,
   testPlayerStepsFromRaftOntoBeach,
-  testInputQueuesLateFramePresses,
+  testGameClockCapsCatchUpSteps,
+  testInputPressSurvivesZeroTickFrames,
+  testInputTapBetweenTicksRegistersOnce,
+  testInputHoldDoesNotRepeatPressEdges,
+  testInputBlurClearsHeldAndQueuedState,
+  testPointerDownIsCanonicalAndNotDebounced,
   testIslandGeneration,
   testIslandNoiseCavesAndOres,
   testTerrainDigging,
@@ -419,4 +522,40 @@ function createInput(pressedCodes = [], downCodes = []) {
       return has;
     }
   };
+}
+
+function createBoundInput() {
+  const listeners = { window: {}, document: {}, canvas: {} };
+  globalThis.window = {
+    devicePixelRatio: 1,
+    addEventListener: (type, handler) => {
+      listeners.window[type] = handler;
+    }
+  };
+  globalThis.document = {
+    visibilityState: "visible",
+    addEventListener: (type, handler) => {
+      listeners.document[type] = handler;
+    }
+  };
+  const canvas = {
+    width: 1280,
+    height: 720,
+    clientWidth: 1280,
+    clientHeight: 720,
+    focused: false,
+    capturedPointerId: null,
+    focus: () => {
+      canvas.focused = true;
+    },
+    setPointerCapture: (pointerId) => {
+      canvas.capturedPointerId = pointerId;
+    },
+    addEventListener: (type, handler) => {
+      listeners.canvas[type] = handler;
+    },
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1280, height: 720 })
+  };
+  const input = new Input(canvas);
+  return { input, canvas, listeners };
 }

@@ -33,6 +33,7 @@ export class ShoreCrawler extends Entity {
 
   update(dt, context) {
     if (this.destroyed || this.state === CRAWLER_STATES.DEAD) return;
+    this.recordPreviousPosition();
     this.attackCooldown = Math.max(0, this.attackCooldown - dt);
     if (this.hurtTimer > 0) {
       this.hurtTimer -= dt;

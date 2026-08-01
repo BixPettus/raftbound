@@ -55,8 +55,11 @@ export class Raft {
   }
 
   getSpawnWorldPosition() {
-    const pos = this.gridToWorld(this.spawnPosition.gridX, this.spawnPosition.gridY);
-    return { x: pos.x, y: pos.y };
+    const pos = this.gridToWorld(this.spawnPosition.gridX, 0);
+    return {
+      x: pos.x + (CONFIG.TILE_SIZE - CONFIG.PLAYER_WIDTH) / 2,
+      y: raftCollisionDeckY(this.baseWorldY) - CONFIG.PLAYER_HEIGHT
+    };
   }
 
   solidTileAt(tileX, tileY) {
@@ -77,7 +80,7 @@ export class Raft {
       const pos = this.gridToWorld(structure.gridX, structure.gridY);
       const rect = {
         x: pos.x,
-        y: pos.y,
+        y: structure.structureType === "wood_foundation" ? raftCollisionDeckY(pos.y) : pos.y,
         width: def.width * CONFIG.TILE_SIZE,
         height: def.height * CONFIG.TILE_SIZE,
         source: "raft",
@@ -182,6 +185,10 @@ function primeStructureCounter(structures) {
 function raftDeckWorldY(dockTileY = CONFIG.SEA_LEVEL_TILE + CONFIG.RAFT_WATERLINE_TILE_OFFSET) {
   const seaLevelTile = dockTileY - CONFIG.RAFT_WATERLINE_TILE_OFFSET;
   return (seaLevelTile - CONFIG.RAFT_SUBMERGED_TILES) * CONFIG.TILE_SIZE;
+}
+
+function raftCollisionDeckY(visualDeckY) {
+  return visualDeckY - CONFIG.RAFT_SUBMERGED_TILES * CONFIG.TILE_SIZE;
 }
 
 function intersects(a, b) {

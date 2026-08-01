@@ -1,8 +1,23 @@
 import { CONFIG } from "../config.js?v=terrain-inventory-4";
 
-const STEP_HEIGHT = CONFIG.TILE_SIZE * 0.6;
+const STEP_HEIGHT = 4;
+const COLLISION_EPSILON = 0.001;
 
 export function moveWithCollision(entity, collisionWorld, dt) {
+  const maxDistance = CONFIG.TILE_SIZE * 0.5;
+  const maxVelocity = Math.max(Math.abs(entity.vx), Math.abs(entity.vy));
+  const steps = Math.max(1, Math.ceil((maxVelocity * dt) / maxDistance));
+  let onGround = false;
+  let landed = false;
+  for (let i = 0; i < steps; i += 1) {
+    const result = moveCollisionSubstep(entity, collisionWorld, dt / steps);
+    onGround = result.onGround || onGround;
+    landed = result.landed || landed;
+  }
+  return { onGround, landed };
+}
+
+function moveCollisionSubstep(entity, collisionWorld, dt) {
   let onGround = false;
   let landed = false;
   const previousVy = entity.vy;
@@ -17,8 +32,8 @@ export function moveWithCollision(entity, collisionWorld, dt) {
       onGround = true;
       continue;
     }
-    if (entity.vx > 0 && previousX + entity.width <= rect.x + 0.001) entity.x = rect.x - entity.width;
-    else if (entity.vx < 0 && previousX >= rect.x + rect.width - 0.001) entity.x = rect.x + rect.width;
+    if (entity.vx > 0 && previousX + entity.width <= rect.x + COLLISION_EPSILON) entity.x = rect.x - entity.width;
+    else if (entity.vx < 0 && previousX >= rect.x + rect.width - COLLISION_EPSILON) entity.x = rect.x + rect.width;
     else continue;
     entity.vx = 0;
   }
@@ -26,12 +41,11 @@ export function moveWithCollision(entity, collisionWorld, dt) {
   entity.y += entity.vy * dt;
   for (const rect of queryOverlappingSolidRects(entity, collisionWorld)) {
     if (!intersects(entity.bounds, rect)) continue;
-    const topPenetration = entity.y + entity.height - rect.y;
-    if (entity.vy > 0 && (previousY + entity.height <= rect.y + 0.001 || topPenetration <= STEP_HEIGHT)) {
+    if (entity.vy > 0 && previousY + entity.height <= rect.y + COLLISION_EPSILON) {
       entity.y = rect.y - entity.height;
       onGround = true;
       landed = previousVy > 0;
-    } else if (entity.vy < 0 && previousY >= rect.y + rect.height - 0.001) {
+    } else if (entity.vy < 0 && previousY >= rect.y + rect.height - COLLISION_EPSILON) {
       entity.y = rect.y + rect.height;
     } else continue;
     entity.vy = 0;

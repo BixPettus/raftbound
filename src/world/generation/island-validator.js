@@ -1,5 +1,5 @@
 import { contextIndex } from "./generation-context.js";
-import { buildTraversalGrid } from "./traversal-grid.js";
+import { buildTraversalGrid, isReachable } from "./traversal-grid.js";
 
 export function validateGeneratedIsland(context) {
   const failures = [];
@@ -15,15 +15,45 @@ export function validateGeneratedIsland(context) {
   if (metrics.waterOnSolid > 0) failures.push("WATER_IN_SOLID");
   if (metrics.maximumSurfaceSlope > 2) failures.push("SURFACE_SLOPE");
 
-  const reachable = buildTraversalGrid(context, [{ tileX: context.profile.startX + 1, tileY: context.definition.seaLevelTile - 3 }]);
-  if (!["tree", "surface_stone", "fibre_plant"].every((type) => context.resources.some((node) => node.type === type && node.tileX > context.profile.startX))) failures.push("RESOURCE_UNREACHABLE");
-  const entrance = context.caveGraph.nodes.find((node) => node.type === "SURFACE_ENTRANCE");
-  if (!entrance || entrance.centerX <= context.profile.startX + context.profile.arrivalFlatTiles) failures.push("ENTRANCE_UNREACHABLE");
+  let reachable = null;
+  if (failures.length === 0) {
+    reachable = buildTraversalGrid(context, [{ tileX: context.profile.startX + 1, tileY: context.definition.seaLevelTile - 3 }]);
+    for (const { type, code } of [
+      { type: "tree", code: "WOOD_UNREACHABLE" },
+      { type: "surface_stone", code: "STONE_UNREACHABLE" },
+      { type: "fibre_plant", code: "FIBRE_UNREACHABLE" }
+    ]) {
+      if (!context.resources.some((node) => node.type === type && isReachableNear(context, reachable, node.tileX, node.tileY - 1, 5))) failures.push(code);
+    }
+    if (!isNodeTypeReachable(context, reachable, "SURFACE_ENTRANCE")) failures.push("ENTRANCE_UNREACHABLE");
+    if (!isNodeTypeReachable(context, reachable, "UPPER_CHAMBER")) failures.push("UPPER_CHAMBER_UNREACHABLE");
+    if (!isNodeTypeReachable(context, reachable, "MID_CHAMBER")) failures.push("MID_CHAMBER_UNREACHABLE");
+    if (context.definition.size !== "small" && !isNodeTypeReachable(context, reachable, "DEEP_CAVERN")) failures.push("DEEP_CAVERN_UNREACHABLE");
+  }
 
   context.diagnostics.validationFailures = failures;
   context.diagnostics.metrics = metrics;
   context.diagnostics.reachable = reachable;
   return { ok: failures.length === 0, failures, metrics };
+}
+
+function isNodeTypeReachable(context, reachable, type) {
+  return context.caveGraph.nodes
+    .filter((node) => node.type === type)
+    .some((node) => isReachableNear(context, reachable, Math.round(node.centerX), Math.round(node.centerY), Math.ceil(Math.max(node.radiusX, node.radiusY)) + 3));
+}
+
+function isReachableNear(context, reachable, centerX, centerY, radius) {
+  const minY = Math.max(0, centerY - radius);
+  const maxY = Math.min(context.definition.height - 1, centerY + radius);
+  const minX = Math.max(0, centerX - radius);
+  const maxX = Math.min(context.definition.width - 1, centerX + radius);
+  for (let y = minY; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      if (isReachable(reachable, context, x, y)) return true;
+    }
+  }
+  return false;
 }
 
 export function calculateMetrics(context) {

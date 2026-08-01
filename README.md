@@ -21,6 +21,8 @@ npm run test:generation
 
 `npm test` runs the fast unit and integration suite. `npm run test:generation` runs the deterministic Generation V3 temperate matrix across 100 seeds and all three island sizes.
 
+In development mode, deterministic island inspection is available at `/?debugIsland=<seed>&debugSize=<small|medium|large>`.
+
 ## Controls
 
 - `A` / `Left`: move left

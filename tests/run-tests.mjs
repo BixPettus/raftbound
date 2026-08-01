@@ -26,6 +26,7 @@ import { TargetResolver } from "../src/world/target-resolver.js";
 import { rollDropTable } from "../src/world/tile-damage-system.js";
 import { RandomStreams } from "../src/world/generation/random-streams.js";
 import { createIslandDefinition } from "../src/world/generation/island-generator.js";
+import { buildTraversalGrid, isReachable } from "../src/world/generation/traversal-grid.js";
 
 function testSeededRandomRepeatability() {
   const a = new SeededRandom("same-seed");
@@ -444,6 +445,22 @@ function testGenerationV3WaterMask() {
   assert.equal(island.tileMap.isWaterTile(dry.x, dry.y), false);
 }
 
+function testTraversalCannotCrossSealedWall() {
+  const tileMap = new TileMap(12, 10, "air", 99);
+  for (let x = 0; x < 12; x += 1) tileMap.setTile(x, 7, "stone");
+  for (let y = 0; y < 7; y += 1) tileMap.setTile(6, y, "stone");
+  const context = {
+    definition: { width: 12, height: 10 },
+    tileMap
+  };
+
+  const reachable = buildTraversalGrid(context, [{ tileX: 2, tileY: 5 }]);
+
+  assert.equal(isReachable(reachable, context, 5, 5), true);
+  assert.equal(isReachable(reachable, context, 7, 5), false);
+  assert.equal(isReachable(reachable, context, 8, 5), false);
+}
+
 function testRandomStreamIsolation() {
   const definition = createIslandDefinition({ seed: "stream-isolation", biome: "temperate", size: "small", generationVersion: CONFIG.GENERATION_VERSION });
   const a = new RandomStreams(definition, 0);
@@ -777,6 +794,7 @@ const tests = [
   testGenerationV3DeterminismAndDimensions,
   testGenerationV3CaveGraphRequirements,
   testGenerationV3WaterMask,
+  testTraversalCannotCrossSealedWall,
   testRandomStreamIsolation,
   testLegacyGenerationIslandMigrationReturnsToSailing,
   testTerrainDigging,

@@ -111,9 +111,12 @@ Save version: unchanged at `2`
 
 ### Validation
 
-- Validation checks required resource types, cave graph requirements, cave-air ratio, water-on-solid, surface slope and entrance/resource placement sanity.
+- Validation checks required resource types, cave graph requirements, cave-air ratio, water-on-solid, surface slope and actual player reachability.
+- Reachability uses explicit walk, fall, jump-arc and swimming transitions, and every transition checks swept collider clearance.
+- Valid islands must prove reachable guaranteed wood, stone and fibre, at least one cave entrance, an upper chamber, a mid chamber, and a deep cavern on medium and large islands.
+- Fallback generation now runs through the same validation path and throws explicitly if the safe fallback is invalid.
 - Generation reports include dimensions, selected attempt, fallback use, tile counts, cave counts, water counts, ore counts, timings and validation failures.
-- Development mode exposes the latest generation report and helper after an island is generated.
+- Development mode exposes the latest generation report, a helper after an island is generated, and deterministic debug island URLs via `?debugIsland=<seed>&debugSize=<size>`.
 
 ### Save Compatibility
 
@@ -130,19 +133,27 @@ Save version: unchanged at `2`
 - Islands generated: `300`
 - Fallback count: `0`
 - Attempt distribution: attempt 0 = `260`, attempt 1 = `34`, attempt 2 = `6`
-- Timing: p95 `68 ms`, p99 `89.55 ms`, max `108.07 ms`
+- Timing: p95 `110.31 ms`, p99 `121.07 ms`, max `128.56 ms`
 - Cave-air ratio range: `0.114` to `0.2779`
+
+### Regression Tests
+
+- Command: `npm test`
+- Result: `42 checks passed`
+- Added `testTraversalCannotCrossSealedWall`, which proves the traversal graph cannot cross a solid wall sealed from floor to ceiling.
 
 ### Browser Validation
 
 - Local app served on `http://localhost:4174/`.
-- HTTP checks passed for `index.html`, `src/world/generation/island-generator.js` and `src/world/generation/water-mask.js`.
-- In-app browser page load showed no console errors.
-- Full manual 3-small/3-medium/3-large cave exploration was not completed in this pass.
+- In-app browser manually inspected deterministic debug seeds:
+  - Small: `http://localhost:4174/?debugIsland=inspect-small&debugSize=small`
+  - Medium: `http://localhost:4174/?debugIsland=inspect-medium&debugSize=medium`
+  - Large: `http://localhost:4174/?debugIsland=inspect-large&debugSize=large`
+- Each rendered an anchored island with the correct seed visible in the HUD.
+- Browser console warnings/errors: none.
 
 ### Known Limitations
 
 - Full biome implementation remains out of scope; only temperate V3 is tuned.
 - Traversal validation is conservative and abstract rather than a full reproduction of runtime physics.
 - Debug visualisation is exposed through diagnostics/report data, not a full in-game toggleable overlay.
-- Browser acceptance was limited to load/error smoke, not full manual exploration.

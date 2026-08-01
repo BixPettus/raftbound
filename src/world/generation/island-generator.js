@@ -24,7 +24,14 @@ export function generateIslandV3(options) {
   }
   const context = runAttempt(definition, 0, true);
   const validation = validateGeneratedIsland(context);
-  context.diagnostics.validationFailures = failedAttempts.flatMap((attempt) => attempt.failures);
+  if (!validation.ok) {
+    const attemptSummary = failedAttempts
+      .map(({ attempt, failures }) => `attempt ${attempt}: ${failures.join(",")}`)
+      .join("; ");
+    throw new Error(`Generation V3 fallback invalid for ${definition.seed}/${definition.size}: ${validation.failures.join(",")} after ${attemptSummary}`);
+  }
+  context.diagnostics.validationFailures = [];
+  context.diagnostics.failedAttempts = failedAttempts;
   return finalizeIsland(context, validation, { usedFallback: true, elapsedMs: now() - start });
 }
 

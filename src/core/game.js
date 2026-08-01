@@ -8,7 +8,7 @@ import { EventBus } from "./event-bus.js";
 import { World } from "../world/world.js?v=terrain-inventory-4";
 import { generateIsland, restoreIsland, serializeIsland } from "../world/island-generator.js?v=terrain-inventory-4";
 import { SeededRandom } from "../world/seeded-random.js";
-import { chooseBiome } from "../world/biome-registry.js";
+import { chooseBiome, getBiomeDefinition } from "../world/biome-registry.js";
 import { Raft } from "../raft/raft.js?v=terrain-inventory-4";
 import { BuildingSystem } from "../raft/building-system.js";
 import { Player } from "../entities/player.js?v=terrain-inventory-4";
@@ -169,6 +169,28 @@ export class Game {
     }
     this.restoreFromSave(result.save);
     this.ui.menu.hide();
+  }
+
+  loadDebugIsland({ seed, biome = "temperate", size = "small" }) {
+    const island = generateIsland({ seed, biome, size, generationVersion: CONFIG.GENERATION_VERSION });
+    this.raft = Raft.createInitial();
+    this.raft.setDock(island.raftDockTile.tileX, island.raftDockTile.tileY);
+    this.world = new World({ raft: this.raft, island });
+    this.player = Player.createNew(this.raft.getSpawnWorldPosition());
+    this.buildingSystem = new BuildingSystem(this.raft);
+    this.worldEditSystem = new WorldEditSystem();
+    this.targetResolver = new TargetResolver();
+    this.currentBiome = getBiomeDefinition(biome);
+    this.pendingEncounter = null;
+    this.acceptedEncounter = null;
+    this.inventoryOpen = false;
+    this.dialog = null;
+    this.state = new GameStateController(GAME_STATES.ISLAND_ANCHORED);
+    this.clock = new GameClock();
+    this.input.clearAll();
+    this.ui.menu.hide();
+    this.canvas.focus?.({ preventScroll: true });
+    return island.generationReport;
   }
 
   restoreFromSave(save) {

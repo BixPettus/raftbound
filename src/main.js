@@ -15,4 +15,13 @@ game.start();
 
 if (CONFIG.DEVELOPMENT_MODE) {
   window.__RAFTBOUND_GAME__ = game;
+  const debugParams = new URLSearchParams(window.location.search);
+  const debugIsland = debugParams.get("debugIsland");
+  if (debugIsland) {
+    window.__RAFTBOUND_DEBUG_REPORT__ = game.loadDebugIsland({
+      seed: debugIsland,
+      biome: debugParams.get("debugBiome") ?? "temperate",
+      size: debugParams.get("debugSize") ?? "small"
+    });
+  }
 }

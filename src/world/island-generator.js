@@ -4,6 +4,8 @@ import { SeededRandom } from "./seeded-random.js";
 import { getBiomeDefinition } from "./biome-registry.js";
 import { ResourceNode } from "../entities/resource-node.js";
 import { ShoreCrawler } from "../entities/enemy.js";
+import { ItemDrop } from "../entities/item-drop.js";
+import { generatedFeatureId } from "./feature-id.js";
 
 const SIZE_RESOURCE_MULTIPLIER = { small: 1, medium: 1.35, large: 1.7 };
 
@@ -48,6 +50,7 @@ function generateAttempt(definition, attemptSeed, forceSafe = false) {
     tileMap,
     resources,
     enemies,
+    itemDrops: [],
     removedResourceIds: new Set(),
     openedContainerIds: new Set(),
     raftDockTile: { tileX: startX - 6, tileY: CONFIG.SEA_LEVEL_TILE + CONFIG.RAFT_WATERLINE_TILE_OFFSET },
@@ -168,25 +171,35 @@ function placeResources(definition, tileMap, surface, random, forceSafe) {
     { type: "surface_stone", tileX: 49 },
     { type: "fibre_plant", tileX: 54 }
   ];
-  for (const item of guaranteed) addNode(resources, item.type, item.tileX, surface[item.tileX] - 1);
+  for (const item of guaranteed) addNode(resources, definition, item.type, item.tileX, surface[item.tileX] - 1);
 
   for (const [type, count] of Object.entries(counts)) {
     for (let i = 0; i < count; i += 1) {
       const tileX = random.int(42, definition.width - 24);
       const tileY = surface[tileX] - 1;
-      if (tileY > 0 && !tileMap.isSolidTile(tileX, tileY)) addNode(resources, type, tileX, tileY);
+      if (tileY > 0 && !tileMap.isSolidTile(tileX, tileY)) addNode(resources, definition, type, tileX, tileY);
     }
   }
 
   if (forceSafe && resources.length < 3) {
-    guaranteed.forEach((item, index) => addNode(resources, item.type, item.tileX + index, CONFIG.SEA_LEVEL_TILE - 3));
+    guaranteed.forEach((item, index) => addNode(resources, definition, item.type, item.tileX + index, CONFIG.SEA_LEVEL_TILE - 3));
   }
   return resources;
 }
 
-function addNode(resources, type, tileX, tileY) {
+function addNode(resources, definition, type, tileX, tileY) {
   const duplicate = resources.some((node) => node.tileX === tileX && node.tileY === tileY);
-  if (!duplicate) resources.push(ResourceNode.create(type, tileX, tileY));
+  if (duplicate) return;
+  const ordinal = resources.filter((node) => node.type === type).length;
+  resources.push(ResourceNode.create(type, tileX, tileY, generatedFeatureId({
+    kind: "resource",
+    generationVersion: definition.generationVersion,
+    islandSeed: definition.seed,
+    featureType: type,
+    tileX,
+    tileY,
+    ordinal
+  })));
 }
 
 function placeEnemies(definition, surface, random) {
@@ -194,7 +207,15 @@ function placeEnemies(definition, surface, random) {
   const count = definition.size === "large" ? 3 : definition.size === "medium" ? 2 : 1;
   for (let i = 0; i < count; i += 1) {
     const tileX = random.int(78, definition.width - 34);
-    enemies.push(ShoreCrawler.create(tileX, surface[tileX] - 1));
+    enemies.push(ShoreCrawler.create(tileX, surface[tileX] - 1, generatedFeatureId({
+      kind: "enemy",
+      generationVersion: definition.generationVersion,
+      islandSeed: definition.seed,
+      featureType: "shore-crawler",
+      tileX,
+      tileY: surface[tileX] - 1,
+      ordinal: i
+    })));
   }
   return enemies;
 }
@@ -265,7 +286,8 @@ export function serializeIsland(island) {
     generationVersion: island.generationVersion,
     removedResourceIds: [...island.removedResourceIds],
     openedContainerIds: [...island.openedContainerIds],
-    modifiedTiles: island.tileMap.serializeModifications()
+    modifiedTiles: island.tileMap.serializeModifications(),
+    itemDrops: (island.itemDrops ?? []).map((drop) => drop.serialize())
   };
 }
 
@@ -275,6 +297,7 @@ export function restoreIsland(savedIsland) {
   island.removedResourceIds = new Set(savedIsland.removedResourceIds ?? []);
   island.openedContainerIds = new Set(savedIsland.openedContainerIds ?? []);
   island.tileMap.applyModifications(savedIsland.modifiedTiles ?? []);
+  island.itemDrops = (savedIsland.itemDrops ?? []).map((drop) => new ItemDrop(drop));
   island.resources.forEach((node) => {
     if (island.removedResourceIds.has(node.id)) node.destroyed = true;
   });

@@ -2,17 +2,19 @@ import { CONFIG } from "../config.js?v=terrain-inventory-4";
 import { Inventory } from "../items/inventory.js";
 import { getStructureDefinition } from "./structure-registry.js";
 import { RaftGrid } from "./raft-grid.js";
+import { RaftBlockLayer } from "./raft-block-layer.js";
 
 let structureCounter = 0;
 
 export class Raft {
-  constructor({ structures, storage, spawnPosition, baseTileX, baseTileY, baseWorldX, baseWorldY } = {}) {
+  constructor({ structures, storage, spawnPosition, baseTileX, baseTileY, baseWorldX, baseWorldY, blocks } = {}) {
     this.grid = new RaftGrid();
     this.baseWorldX = baseWorldX ?? (baseTileX ?? 8) * CONFIG.TILE_SIZE;
     this.baseWorldY = baseWorldY ?? raftDeckWorldY(baseTileY);
     this.syncBaseTiles();
     this.spawnPosition = spawnPosition ?? { gridX: 2, gridY: -3 };
     this.structures = structures ?? createInitialStructures();
+    this.blocks = new RaftBlockLayer(blocks ?? []);
     primeStructureCounter(this.structures);
     this.storage = new Map();
     if (storage) {
@@ -88,7 +90,11 @@ export class Raft {
       };
       if (intersects(bounds, rect)) rects.push(rect);
     }
-    return rects;
+    return [...rects, ...this.queryBlockCollisionRects(bounds)];
+  }
+
+  queryBlockCollisionRects(bounds) {
+    return this.blocks.queryCollisionRects(bounds, this);
   }
 
   findNearbyStorage(worldX, worldY, maxDistanceTiles = 2) {
@@ -123,6 +129,26 @@ export class Raft {
     return structure;
   }
 
+  getBlock(gridX, gridY) {
+    return this.blocks.get(gridX, gridY);
+  }
+
+  hasBlock(gridX, gridY) {
+    return this.blocks.has(gridX, gridY);
+  }
+
+  addBlock(tileId, gridX, gridY) {
+    return this.blocks.add(tileId, gridX, gridY);
+  }
+
+  removeBlock(gridX, gridY) {
+    return this.blocks.remove(gridX, gridY);
+  }
+
+  serializeBlocks() {
+    return this.blocks.serialize();
+  }
+
   removeStructure(structureId) {
     const structure = this.structures.find((item) => item.id === structureId);
     if (!structure) return { ok: false, reason: "Structure not found." };
@@ -148,6 +174,7 @@ export class Raft {
       baseWorldX: this.baseWorldX,
       baseWorldY: this.baseWorldY,
       structures: this.structures.map((structure) => ({ ...structure, state: { ...structure.state } })),
+      blocks: this.serializeBlocks(),
       storage,
       spawnPosition: { ...this.spawnPosition }
     };

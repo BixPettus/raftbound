@@ -52,8 +52,8 @@ export class ResourceNode extends Entity {
     this.destroyed = destroyed;
   }
 
-  static create(type, tileX, tileY) {
-    return new ResourceNode({ id: createEntityId(type), type, tileX, tileY });
+  static create(type, tileX, tileY, id = null) {
+    return new ResourceNode({ id: id ?? createEntityId(type), type, tileX, tileY });
   }
 
   hit(tool, inventory) {
@@ -64,7 +64,9 @@ export class ResourceNode extends Entity {
     this.health -= tool.damage ?? 10;
     if (this.health <= 0) {
       this.destroyed = true;
-      for (const drop of this.drops) inventory.addItem(drop.itemId, drop.quantity);
+      if (inventory) {
+        for (const drop of this.drops) inventory.addItem(drop.itemId, drop.quantity);
+      }
       return { ok: true, destroyed: true, drops: this.drops };
     }
     return { ok: true, destroyed: false };

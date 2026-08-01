@@ -32,7 +32,9 @@ export class Renderer {
     drawOcean(ctx, renderGame);
     drawTiles(ctx, renderGame);
     drawRaft(ctx, renderGame);
+    drawRaftBlocks(ctx, renderGame);
     drawWaterOverlay(ctx, renderGame);
+    drawItemDrops(ctx, renderGame);
     drawResources(ctx, renderGame);
     drawEnemies(ctx, renderGame);
     drawInteractionHighlights(ctx, renderGame);
@@ -150,6 +152,29 @@ function drawRaft(ctx, game) {
   }
 }
 
+function drawRaftBlocks(ctx, game) {
+  for (const block of game.raft.serializeBlocks?.() ?? []) {
+    const tile = getTileDefinition(block.tileId);
+    const pos = game.raft.gridToWorld(block.gridX, block.gridY);
+    const screen = worldToScreen(pos.x, pos.y, game.camera);
+    ctx.fillStyle = tile.renderStyle.color;
+    ctx.fillRect(screen.x, screen.y, CONFIG.TILE_SIZE, CONFIG.TILE_SIZE);
+    ctx.fillStyle = tile.renderStyle.edge ?? "rgba(0,0,0,0.2)";
+    ctx.fillRect(screen.x, screen.y, CONFIG.TILE_SIZE, 3);
+  }
+}
+
+function drawItemDrops(ctx, game) {
+  for (const drop of game.world.island?.itemDrops ?? []) {
+    if (drop.destroyed) continue;
+    const screen = worldToScreen(drop.x, drop.y, game.camera);
+    ctx.fillStyle = "#f3dc79";
+    ctx.fillRect(Math.round(screen.x), Math.round(screen.y), drop.width, drop.height);
+    ctx.strokeStyle = "#6b4c1c";
+    ctx.strokeRect(Math.round(screen.x) + 0.5, Math.round(screen.y) + 0.5, drop.width - 1, drop.height - 1);
+  }
+}
+
 function drawResources(ctx, game) {
   for (const node of game.world.island?.resources ?? []) {
     if (node.destroyed) continue;
@@ -201,9 +226,8 @@ function drawPlayer(ctx, game, alpha = 1) {
   const runCycle = Math.sin(player.animationTime * 13);
   const swimCycle = Math.sin(player.animationTime * 9);
   const bob = state === "run" ? Math.round(Math.abs(runCycle) * -2) : state === "swim" ? Math.round(swimCycle * 2) : 0;
-  const playerActionProgress = player.actionTimer > 0 ? 1 - player.actionTimer / CONFIG.PLAYER_ACTION_SECONDS : 0;
-  const inputActionProgress = game.input.getPrimaryClickFeedbackProgress();
-  const actionProgress = Math.max(playerActionProgress, inputActionProgress);
+  const playerActionProgress = player.actionController?.animationProgress() ?? (player.actionTimer > 0 ? 1 - player.actionTimer / CONFIG.PLAYER_ACTION_SECONDS : 0);
+  const actionProgress = playerActionProgress;
   const visualScale = CONFIG.PLAYER_SPRITE_HEIGHT / 56;
 
   ctx.save();
@@ -392,6 +416,8 @@ function drawTerrainDigHighlight(ctx, game, item, mouse) {
   const nearPlayer = pointDistance(center, game.player.center()) <= CONFIG.TERRAIN_DIG_RANGE_TILES * CONFIG.TILE_SIZE;
   const validTool = nearPlayer && (!tile.requiredTool || item.toolType === tile.requiredTool) && (item.toolPower ?? 0) >= (tile.minimumToolPower ?? 0);
   drawTileBracket(ctx, target.tileX, target.tileY, game.camera, validTool ? "#82e79a" : "#f3dc79");
+  const damage = game.worldEditSystem?.tileDamageSystem?.damageByTile?.get(`${target.tileX},${target.tileY}`);
+  if (damage) drawCrackOverlay(ctx, target.tileX, target.tileY, game.camera, damage.accumulatedDamage / (tile.hardness ?? 1));
 }
 
 function drawBracket(ctx, entity, camera, color) {
@@ -434,14 +460,33 @@ function entityDistance(a, b) {
 }
 
 function drawBuildPreview(ctx, game) {
-  const preview = game.buildingSystem.preview;
-  if (!game.buildingSystem.enabled || !preview) return;
-  const pos = game.raft.gridToWorld(preview.gridX, preview.gridY);
+  const preview = game.worldEditSystem?.previewState ?? game.buildingSystem.preview;
+  if (!preview) return;
+  const isRaft = preview.domain === "raft_block" || preview.domain === "raft_structure" || preview.gridX != null;
+  const pos = isRaft ? game.raft.gridToWorld(preview.gridX, preview.gridY) : { x: preview.tileX * CONFIG.TILE_SIZE, y: preview.tileY * CONFIG.TILE_SIZE };
   const screen = worldToScreen(pos.x, pos.y, game.camera);
   ctx.globalAlpha = 0.55;
-  ctx.fillStyle = preview.validation.ok ? "#72df8f" : "#ed695c";
+  ctx.fillStyle = preview.ok || preview.validation?.ok ? "#72df8f" : "#ed695c";
   ctx.fillRect(screen.x, screen.y, CONFIG.TILE_SIZE, CONFIG.TILE_SIZE);
   ctx.globalAlpha = 1;
+}
+
+function drawCrackOverlay(ctx, tileX, tileY, camera, progress) {
+  const screen = worldToScreen(tileX * CONFIG.TILE_SIZE, tileY * CONFIG.TILE_SIZE, camera);
+  ctx.save();
+  ctx.globalAlpha = Math.max(0.25, Math.min(0.85, progress));
+  ctx.strokeStyle = "#1f1712";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(screen.x + 8, screen.y + 8);
+  ctx.lineTo(screen.x + 15, screen.y + 17);
+  ctx.lineTo(screen.x + 11, screen.y + 26);
+  if (progress > 0.55) {
+    ctx.moveTo(screen.x + 15, screen.y + 17);
+    ctx.lineTo(screen.x + 25, screen.y + 10);
+  }
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawPrompts(ctx, game) {

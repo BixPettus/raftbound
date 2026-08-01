@@ -3,13 +3,16 @@ import { CONFIG } from "../src/config.js";
 import { SeededRandom } from "../src/world/seeded-random.js";
 import { tileToWorld, worldToTile } from "../src/world/coordinates.js";
 import { Inventory } from "../src/items/inventory.js";
+import { Hotbar } from "../src/items/hotbar.js";
+import { PlayerInventory, INVENTORY_POLICIES } from "../src/items/player-inventory.js";
 import { getRecipe } from "../src/items/recipe-registry.js";
 import { CraftingSystem } from "../src/items/crafting-system.js";
 import { generateIsland } from "../src/world/island-generator.js";
 import { Raft } from "../src/raft/raft.js";
 import { BuildingSystem } from "../src/raft/building-system.js";
-import { createSaveObject, validateSave } from "../src/persistence/save-schema.js";
+import { createSaveObject, validateSave, SAVE_VERSION } from "../src/persistence/save-schema.js";
 import { SaveManager } from "../src/persistence/save-manager.js";
+import { migrateSave } from "../src/persistence/migrations.js";
 import { getItemDefinition } from "../src/items/item-registry.js";
 import { Player } from "../src/entities/player.js";
 import { Input } from "../src/core/input.js";
@@ -17,6 +20,10 @@ import { GameClock } from "../src/core/game-clock.js";
 import { tryDigTile } from "../src/world/terrain-digging.js";
 import { TileMap } from "../src/world/tile-map.js";
 import { moveWithCollision } from "../src/core/physics.js";
+import { World } from "../src/world/world.js";
+import { WorldEditSystem } from "../src/world/world-edit-system.js";
+import { TargetResolver } from "../src/world/target-resolver.js";
+import { rollDropTable } from "../src/world/tile-damage-system.js";
 
 function testSeededRandomRepeatability() {
   const a = new SeededRandom("same-seed");
@@ -64,6 +71,38 @@ function testCraftRollbackWhenOutputIsFull() {
   assert.equal(crafting.craft(recipe, inventory, true).ok, false);
   assert.equal(inventory.countItem("fibre"), 1);
   assert.equal(inventory.countItem("wood"), 0);
+}
+
+function testPlayerInventoryFacadeAcrossBagAndHotbar() {
+  const bag = new Inventory(4);
+  const hotbar = new Hotbar();
+  bag.addItem("wood", 2);
+  hotbar.slots[0] = { itemId: "wood", quantity: 3 };
+  hotbar.slots[1] = { itemId: "fibre", quantity: 2 };
+  hotbar.select(0);
+  const items = new PlayerInventory({ bag, hotbar });
+
+  assert.equal(items.countItem("wood"), 5);
+  assert.equal(items.hasItems([{ itemId: "wood", quantity: 5 }]), true);
+  const reservation = items.reserveItems([{ itemId: "wood", quantity: 4 }]);
+  assert.equal(reservation.ok, true);
+  assert.equal(items.commitReservation(reservation), true);
+  assert.equal(items.countItem("wood"), 1);
+
+  const rollbackReservation = items.reserveItems([{ itemId: "fibre", quantity: 1 }]);
+  items.commitReservation(rollbackReservation);
+  assert.equal(items.countItem("fibre"), 1);
+  items.rollbackReservation(rollbackReservation);
+  assert.equal(items.countItem("fibre"), 2);
+}
+
+function testCraftingUsesHotbarIngredients() {
+  const player = new Player();
+  player.hotbar.slots[0] = { itemId: "fibre", quantity: 3 };
+  const crafting = new CraftingSystem();
+  assert.equal(crafting.craft(getRecipe("rope"), player.items, true).ok, true);
+  assert.equal(player.items.countItem("rope"), 1);
+  assert.equal(player.items.countItem("fibre"), 0);
 }
 
 function testBuildPlacementValidity() {
@@ -364,7 +403,7 @@ function testTerrainDigging() {
   const grassResult = tryDigTile(island.tileMap, grassX, grassY, pickaxe, inventory);
   assert.equal(grassResult.ok, true);
   assert.equal(island.tileMap.getTile(grassX, grassY), "air");
-  assert.equal(inventory.countItem("fibre") >= 1, true);
+  assert.equal(inventory.countItem("dirt_block") >= 1, true);
 
   const stoneY = CONFIG.SEA_LEVEL_TILE + 6;
   assert.equal(island.tileMap.getTile(grassX, stoneY), "stone");
@@ -372,6 +411,147 @@ function testTerrainDigging() {
   assert.equal(stoneResult.ok, true);
   assert.equal(island.tileMap.getTile(grassX, stoneY), "air");
   assert.equal(inventory.countItem("stone") >= 1, true);
+}
+
+function testTileDamageAccumulatesBeforeBreaking() {
+  const tileMap = new TileMap(8, 8, "air", CONFIG.SEA_LEVEL_TILE);
+  tileMap.setTile(3, 3, "stone");
+  const raft = Raft.createInitial();
+  const world = new World({ raft, island: { tileMap, itemDrops: [], resources: [], enemies: [] } });
+  const player = new Player({ x: 3 * CONFIG.TILE_SIZE, y: CONFIG.TILE_SIZE });
+  const edit = new WorldEditSystem();
+  const context = editTestContext({ player, world });
+  const tool = getItemDefinition("basic_pickaxe");
+  const target = { ok: true, tileX: 3, tileY: 3 };
+
+  const first = edit.execute({ operation: "DAMAGE_TERRAIN", target, tool }, context);
+  assert.equal(first.ok, true);
+  assert.equal(first.saveDirty, false);
+  assert.equal(tileMap.getTile(3, 3), "stone");
+
+  edit.execute({ operation: "DAMAGE_TERRAIN", target, tool }, context);
+  const third = edit.execute({ operation: "DAMAGE_TERRAIN", target, tool }, context);
+  assert.equal(third.saveDirty, true);
+  assert.equal(tileMap.getTile(3, 3), "air");
+  assert.equal(context.player.items.countItem("stone") >= 1, true);
+}
+
+function testDropRangeUsesInclusiveMinMax() {
+  assert.deepEqual(rollDropTable([{ itemId: "stone", min: 2, max: 4 }], { int: () => 4 }), [{ itemId: "stone", quantity: 4 }]);
+}
+
+function testIslandAndRaftDirtPlacementLifecycle() {
+  const island = generateIsland({ seed: "dirt-lifecycle", biome: "temperate", size: "small", generationVersion: CONFIG.GENERATION_VERSION });
+  const raft = Raft.createInitial();
+  raft.setDock(island.raftDockTile.tileX, island.raftDockTile.tileY);
+  const world = new World({ raft, island });
+  const player = Player.createNew({ x: 33 * CONFIG.TILE_SIZE, y: (CONFIG.SEA_LEVEL_TILE - 4) * CONFIG.TILE_SIZE });
+  player.hotbar.slots[0] = { itemId: "dirt_block", quantity: 2 };
+  player.hotbar.select(0);
+  const edit = new WorldEditSystem();
+  const context = editTestContext({ player, world });
+  const itemDefinition = getItemDefinition("dirt_block");
+
+  const islandTarget = {
+    domain: "island_terrain",
+    tileX: 33,
+    tileY: CONFIG.SEA_LEVEL_TILE - 2,
+    tileId: "dirt",
+    itemDefinition
+  };
+  const islandResult = edit.execute({ operation: "PLACE_BLOCK", target: islandTarget, itemDefinition }, context);
+  assert.equal(islandResult.ok, true);
+  assert.equal(world.tileMap.getTile(islandTarget.tileX, islandTarget.tileY), "dirt");
+  assert.equal(player.items.countItem("dirt_block"), 1);
+
+  const raftSpawn = raft.getSpawnWorldPosition();
+  player.x = raftSpawn.x;
+  player.y = raftSpawn.y;
+  player.syncPreviousPosition();
+  const raftTarget = {
+    domain: "raft_block",
+    gridX: 0,
+    gridY: -1,
+    tileId: "dirt",
+    itemDefinition
+  };
+  const raftResult = edit.execute({ operation: "PLACE_BLOCK", target: raftTarget, itemDefinition }, context);
+  assert.equal(raftResult.ok, true);
+  assert.equal(raft.hasBlock(0, -1), true);
+  assert.equal(player.items.countItem("dirt_block"), 0);
+}
+
+function testFailedRaftPlacementConsumesNothing() {
+  const raft = Raft.createInitial();
+  const world = new World({ raft });
+  const player = Player.createNew(raft.getSpawnWorldPosition());
+  const nearOpenWater = raft.gridToWorld(6, 0);
+  player.x = nearOpenWater.x;
+  player.y = nearOpenWater.y - CONFIG.PLAYER_HEIGHT;
+  player.hotbar.slots[0] = { itemId: "dirt_block", quantity: 1 };
+  player.hotbar.select(0);
+  const edit = new WorldEditSystem();
+  const itemDefinition = getItemDefinition("dirt_block");
+  const result = edit.execute({
+    operation: "PLACE_BLOCK",
+    target: { domain: "raft_block", gridX: 8, gridY: -1, tileId: "dirt", itemDefinition },
+    itemDefinition
+  }, editTestContext({ player, world }));
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "NO_SUPPORT");
+  assert.equal(player.items.countItem("dirt_block"), 1);
+  assert.equal(raft.hasBlock(8, -1), false);
+}
+
+function testRaftBoundsAndBlockPersistence() {
+  const raft = Raft.createInitial();
+  assert.equal(raft.grid.inBounds(CONFIG.RAFT_EXTENTS.minX, CONFIG.RAFT_EXTENTS.minY), true);
+  assert.equal(raft.grid.inBounds(CONFIG.RAFT_EXTENTS.maxX, CONFIG.RAFT_EXTENTS.maxY), true);
+  assert.equal(raft.grid.inBounds(CONFIG.RAFT_EXTENTS.minX - 1, 0), false);
+  assert.equal(raft.grid.inBounds(CONFIG.RAFT_EXTENTS.maxX + 1, 0), false);
+  assert.equal(raft.grid.inBounds(0, CONFIG.RAFT_EXTENTS.minY - 1), false);
+  assert.equal(raft.grid.inBounds(0, CONFIG.RAFT_EXTENTS.maxY + 1), false);
+
+  raft.addBlock("dirt", 0, -1);
+  const restored = new Raft(raft.serialize());
+  assert.equal(restored.hasBlock(0, -1), true);
+}
+
+function testStableResourceIdsIgnoreGenerationHistory() {
+  const options = { seed: "stable-feature", biome: "temperate", size: "small", generationVersion: CONFIG.GENERATION_VERSION };
+  generateIsland({ ...options, seed: "unrelated-a" });
+  const a = generateIsland(options);
+  generateIsland({ ...options, seed: "unrelated-b" });
+  const b = generateIsland(options);
+  assert.deepEqual(a.resources.map((node) => node.id), b.resources.map((node) => node.id));
+}
+
+function testSaveVersionOneMigrationAddsBlocksAndDrops() {
+  const raft = Raft.createInitial();
+  const v1 = {
+    saveVersion: 1,
+    createdAt: new Date().toISOString(),
+    voyage: {
+      distanceTravelled: 1,
+      encounterCount: 0,
+      currentState: "SAILING",
+      currentIsland: null
+    },
+    player: {
+      health: 100,
+      oxygen: 100,
+      position: { x: 0, y: 0 },
+      inventory: new Inventory().serialize(),
+      hotbar: { selectedIndex: 0, slots: [] }
+    },
+    raft: raft.serialize()
+  };
+  delete v1.raft.blocks;
+  const migrated = migrateSave(v1);
+  assert.equal(migrated.saveVersion, SAVE_VERSION);
+  assert.deepEqual(migrated.raft.blocks, []);
+  assert.equal(validateSave(migrated).ok, true);
 }
 
 function testSaveSerialization() {
@@ -456,9 +636,16 @@ function testCoreLoopPersistence() {
 
   const crafting = new CraftingSystem();
   assert.equal(crafting.craft(getRecipe("wood_foundation"), playerInventory, true).ok, true);
-  const building = new BuildingSystem(raft);
-  assert.equal(building.validatePlacement("wood_foundation", 6, 0, playerInventory).ok, true);
-  assert.equal(building.placeSelected(raft.gridToWorld(6, 0).x, raft.gridToWorld(6, 0).y, playerInventory).ok, true);
+  const player = new Player(raft.getSpawnWorldPosition());
+  const buildPos = raft.gridToWorld(5, 0);
+  player.x = buildPos.x;
+  player.y = buildPos.y - CONFIG.PLAYER_HEIGHT;
+  player.inventory = playerInventory;
+  player.items = new PlayerInventory({ bag: player.inventory, hotbar: player.hotbar });
+  const edit = new WorldEditSystem();
+  const foundationItem = getItemDefinition("raft_foundation");
+  const foundationTarget = { domain: "raft_structure", gridX: 6, gridY: 0, structureType: "wood_foundation", itemDefinition: foundationItem };
+  assert.equal(edit.execute({ operation: "PLACE_STRUCTURE", target: foundationTarget, itemDefinition: foundationItem }, editTestContext({ player, world: new World({ raft }) })).ok, true);
 
   const storageId = [...raft.storage.keys()][0];
   const storage = raft.storage.get(storageId);
@@ -480,6 +667,8 @@ const tests = [
   testInventoryStackingAndRemoval,
   testRecipeValidation,
   testCraftRollbackWhenOutputIsFull,
+  testPlayerInventoryFacadeAcrossBagAndHotbar,
+  testCraftingUsesHotbarIngredients,
   testBuildPlacementValidity,
   testRaftFloatsAtWaterline,
   testArrivalBeachMeetsRaftDeck,
@@ -499,6 +688,13 @@ const tests = [
   testIslandGeneration,
   testIslandNoiseCavesAndOres,
   testTerrainDigging,
+  testTileDamageAccumulatesBeforeBreaking,
+  testDropRangeUsesInclusiveMinMax,
+  testIslandAndRaftDirtPlacementLifecycle,
+  testFailedRaftPlacementConsumesNothing,
+  testRaftBoundsAndBlockPersistence,
+  testStableResourceIdsIgnoreGenerationHistory,
+  testSaveVersionOneMigrationAddsBlocksAndDrops,
   testSaveSerialization,
   testSaveDeserialization,
   testCoreLoopPersistence
@@ -558,4 +754,17 @@ function createBoundInput() {
   };
   const input = new Input(canvas);
   return { input, canvas, listeners };
+}
+
+function editTestContext({ player, world }) {
+  return {
+    player,
+    world,
+    tick: 1,
+    spawnItemDrop: (itemId, quantity, x, y) => {
+      world.island ??= { itemDrops: [] };
+      world.island.itemDrops ??= [];
+      world.island.itemDrops.push({ itemId, quantity, x, y, destroyed: false, serialize: () => ({ itemId, quantity, x, y }) });
+    }
+  };
 }

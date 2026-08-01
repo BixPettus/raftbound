@@ -1,4 +1,4 @@
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export function createSaveObject(game) {
   return {
@@ -22,5 +22,11 @@ export function validateSave(value) {
   if (!value.voyage || !value.player || !value.raft) return { ok: false, reason: "Save is missing required sections." };
   if (!Array.isArray(value.player.inventory)) return { ok: false, reason: "Player inventory is invalid." };
   if (!Array.isArray(value.raft.structures)) return { ok: false, reason: "Raft structures are invalid." };
+  if (!Array.isArray(value.raft.blocks)) return { ok: false, reason: "Raft blocks are invalid." };
+  for (const block of value.raft.blocks) {
+    if (!block.tileId || !Number.isFinite(block.gridX) || !Number.isFinite(block.gridY)) return { ok: false, reason: "Raft block is invalid." };
+  }
+  const islandDrops = value.voyage.currentIsland?.itemDrops;
+  if (islandDrops && !Array.isArray(islandDrops)) return { ok: false, reason: "Island drops are invalid." };
   return { ok: true };
 }

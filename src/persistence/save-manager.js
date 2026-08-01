@@ -6,6 +6,7 @@ export class SaveManager {
   constructor(storage = window.localStorage) {
     this.storage = storage;
     this.lastError = null;
+    this.dirtyReasons = new Set();
   }
 
   hasSave() {
@@ -15,7 +16,16 @@ export class SaveManager {
   save(game) {
     const save = createSaveObject(game);
     this.storage.setItem(CONFIG.SAVE_KEY, JSON.stringify(save));
+    this.dirtyReasons.clear();
     return save;
+  }
+
+  markDirty(reason = "world_changed") {
+    this.dirtyReasons.add(reason);
+  }
+
+  isDirty() {
+    return this.dirtyReasons.size > 0;
   }
 
   load() {

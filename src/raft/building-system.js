@@ -61,13 +61,7 @@ export class BuildingSystem {
   }
 
   placeSelected(worldX, worldY, inventory) {
-    const grid = this.raft.worldToGrid(worldX, worldY);
-    const definition = this.selectedStructure;
-    const validation = this.validatePlacement(definition.id, grid.gridX, grid.gridY, inventory);
-    if (!validation.ok) return validation;
-    if (definition.cost && !inventory.removeItems(definition.cost)) return { ok: false, reason: "Missing materials." };
-    const structure = this.raft.addStructure(definition.id, grid.gridX, grid.gridY);
-    return { ok: true, structure };
+    return { ok: false, reason: "Structure placement must go through WorldEditSystem." };
   }
 
   hasAdjacentFoundation(gridX, gridY) {

@@ -3,13 +3,17 @@ import { tileKey } from "../world/coordinates.js";
 import { getStructureDefinition } from "./structure-registry.js";
 
 export class RaftGrid {
-  constructor(width = CONFIG.RAFT_MAX_WIDTH, height = CONFIG.RAFT_MAX_HEIGHT) {
+  constructor(width = CONFIG.RAFT_MAX_WIDTH, height = CONFIG.RAFT_MAX_HEIGHT, extents = CONFIG.RAFT_EXTENTS) {
     this.width = width;
     this.height = height;
+    this.extents = extents;
   }
 
   inBounds(gridX, gridY) {
-    return gridX >= -this.width && gridX <= this.width && gridY >= -this.height && gridY <= this.height;
+    return gridX >= this.extents.minX
+      && gridX <= this.extents.maxX
+      && gridY >= this.extents.minY
+      && gridY <= this.extents.maxY;
   }
 
   occupiedCells(structures) {

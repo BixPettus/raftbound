@@ -3,6 +3,8 @@ import { Entity } from "./entity.js";
 import { moveWithCollision } from "../core/physics.js?v=terrain-inventory-4";
 import { Inventory } from "../items/inventory.js";
 import { Hotbar } from "../items/hotbar.js";
+import { PlayerInventory } from "../items/player-inventory.js";
+import { PlayerActionController } from "./player-action-controller.js";
 
 export class Player extends Entity {
   constructor({ x = 0, y = 0, health = CONFIG.MAX_HEALTH, oxygen = CONFIG.MAX_OXYGEN, inventory = null, hotbar = null } = {}) {
@@ -12,6 +14,8 @@ export class Player extends Entity {
     this.inventory = new Inventory(CONFIG.INVENTORY_SIZE, inventory);
     this.hotbar = new Hotbar(hotbar?.slots ?? hotbar);
     if (hotbar?.selectedIndex != null) this.hotbar.select(hotbar.selectedIndex);
+    this.items = new PlayerInventory({ bag: this.inventory, hotbar: this.hotbar });
+    this.actionController = new PlayerActionController(this);
     this.onGround = false;
     this.inWater = false;
     this.facing = 1;
@@ -41,6 +45,7 @@ export class Player extends Entity {
     this.invulnerability = Math.max(0, this.invulnerability - dt);
     this.actionTimer = Math.max(0, this.actionTimer - dt);
     this.hurtTimer = Math.max(0, this.hurtTimer - dt);
+    this.actionController.update(dt);
     if (this.actionTimer === 0) this.actionType = null;
     this.inWater = context.waterSystem.containsPoint(this.x + this.width / 2, this.y + this.height * 0.65, context.tileMap);
 
@@ -156,6 +161,7 @@ export class Player extends Entity {
   getAnimationState() {
     if (this.health <= 0) return "dead";
     if (this.hurtTimer > 0) return "hurt";
+    if (this.actionController.state !== "IDLE" && this.actionController.actionType) return this.actionController.actionType;
     if (this.actionTimer > 0) return this.actionType ?? "tool";
     if (this.inWater) return "swim";
     if (!this.onGround && this.vy < -20) return "jump";

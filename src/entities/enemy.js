@@ -23,9 +23,9 @@ export class ShoreCrawler extends Entity {
     this.hurtTimer = 0;
   }
 
-  static create(tileX, tileY) {
+  static create(tileX, tileY, id = null) {
     return new ShoreCrawler({
-      id: createEntityId("shore-crawler"),
+      id: id ?? createEntityId("shore-crawler"),
       x: tileX * CONFIG.TILE_SIZE,
       y: (tileY + 1) * CONFIG.TILE_SIZE - 22
     });

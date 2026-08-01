@@ -9,7 +9,9 @@ export function tryDigTile(tileMap, tileX, tileY, tool, inventory) {
 
   const drops = [];
   for (const drop of tile.dropTable ?? []) {
-    const quantity = drop.quantity ?? drop.min ?? 1;
+    const min = drop.min ?? drop.quantity ?? 1;
+    const max = drop.max ?? drop.quantity ?? min;
+    const quantity = min === max ? min : min + Math.floor(Math.random() * (max - min + 1));
     if (quantity <= 0) continue;
     inventory.addItem(drop.itemId, quantity);
     drops.push({ itemId: drop.itemId, quantity });

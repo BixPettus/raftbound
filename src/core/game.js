@@ -16,8 +16,11 @@ import { distanceBetween } from "../entities/entity.js";
 import { getItemDefinition } from "../items/item-registry.js";
 import { getRecipe } from "../items/recipe-registry.js";
 import { CraftingSystem } from "../items/crafting-system.js";
-import { worldToTile } from "../world/coordinates.js";
-import { tryDigTile, tryPlaceTile } from "../world/terrain-digging.js?v=terrain-inventory-4";
+import { INVENTORY_POLICIES } from "../items/player-inventory.js";
+import { WorldEditSystem } from "../world/world-edit-system.js";
+import { TargetResolver } from "../world/target-resolver.js";
+import { getActionSpec } from "../data/action-specs.js";
+import { ItemDrop } from "../entities/item-drop.js";
 import { SaveManager } from "../persistence/save-manager.js";
 import { Hud } from "../ui/hud.js";
 import { MenuUI } from "../ui/menu-ui.js";
@@ -42,6 +45,8 @@ export class Game {
     this.player = Player.createNew(this.raft.getSpawnWorldPosition());
     this.buildingSystem = new BuildingSystem(this.raft);
     this.craftingSystem = new CraftingSystem();
+    this.worldEditSystem = new WorldEditSystem();
+    this.targetResolver = new TargetResolver();
     this.createdAt = new Date().toISOString();
     this.distanceTravelled = 0;
     this.encounterCount = 0;
@@ -136,6 +141,8 @@ export class Game {
     this.world = new World({ raft: this.raft });
     this.player = Player.createNew(this.raft.getSpawnWorldPosition());
     this.buildingSystem = new BuildingSystem(this.raft);
+    this.worldEditSystem = new WorldEditSystem();
+    this.targetResolver = new TargetResolver();
     this.createdAt = new Date().toISOString();
     this.distanceTravelled = 0;
     this.encounterCount = 0;
@@ -184,6 +191,8 @@ export class Game {
       hotbar: save.player.hotbar
     });
     this.buildingSystem = new BuildingSystem(this.raft);
+    this.worldEditSystem = new WorldEditSystem();
+    this.targetResolver = new TargetResolver();
     this.state = new GameStateController(island ? GAME_STATES.ISLAND_ANCHORED : GAME_STATES.SAILING);
     this.encounterTimer = encounterInterval();
     this.pendingEncounter = null;
@@ -240,6 +249,7 @@ export class Game {
       else if (command.type === "cancel_build") this.buildingSystem.cancel();
       else if (command.type === "interact") this.interact();
       else if (command.type === "primary_action") this.handlePrimaryAction(command);
+      else if (command.type === "craft") this.executeCraft(command.recipeId);
     }
   }
 
@@ -263,8 +273,9 @@ export class Game {
       return;
     }
     this.world.update(dt);
+    this.updateItemDrops(dt);
     this.autosaveTimer -= dt;
-    if (this.autosaveTimer <= 0 && this.state.isActive()) {
+    if (this.autosaveTimer <= 0 && this.state.isActive() && this.saveManager.isDirty()) {
       this.saveManager.save(this);
       this.autosaveTimer = CONFIG.AUTOSAVE_SECONDS;
     }
@@ -288,16 +299,92 @@ export class Game {
           collisionWorld: this.world.getCollisionWorld()
         });
       }
-      this.updateAnchoredPrompts();
     }
+    this.updateContextPrompts();
 
-    if (this.buildingSystem.enabled) {
-      this.buildingSystem.updatePreview(this.input.mouse.worldX, this.input.mouse.worldY, this.player.inventory);
-    }
+    this.updatePlacementPreview();
 
     if (this.player.health <= 0 && this.state.current !== GAME_STATES.PLAYER_DEAD) this.killPlayer();
     const bounds = this.camera.worldBounds(this.world.width, this.world.height);
     this.camera.follow(this.player, bounds.widthPx, bounds.heightPx);
+  }
+
+  updateItemDrops(dt) {
+    const drops = this.world.island?.itemDrops ?? [];
+    for (const drop of drops) {
+      if (drop.destroyed) continue;
+      drop.update(dt);
+      if (drop.pickupDelay > 0) continue;
+      if (distanceBetween(drop, this.player) > CONFIG.TILE_SIZE * 1.2) continue;
+      const result = this.player.items.addItem(drop.itemId, drop.quantity, INVENTORY_POLICIES.ALL_PLAYER_CONTAINERS);
+      drop.quantity = result.remaining;
+      if (drop.quantity <= 0) drop.destroyed = true;
+      if (result.added > 0) this.saveManager.markDirty("pickup_item_drop");
+    }
+    if (this.world.island) this.world.island.itemDrops = drops.filter((drop) => !drop.destroyed);
+  }
+
+  updatePlacementPreview() {
+    const selected = this.player.hotbar.getSelectedHotbarItem();
+    const item = selected ? getItemDefinition(selected.itemId) : null;
+    if (!this.buildingSystem.enabled && !item?.placement) {
+      this.worldEditSystem.previewState = null;
+      return;
+    }
+    const placementItem = this.buildingSystem.enabled
+      ? getItemDefinition(this.buildingSystem.selectedStructure.itemId)
+      : item;
+    if (!placementItem) {
+      this.worldEditSystem.previewState = null;
+      return;
+    }
+    const target = this.targetResolver.resolve({
+      actor: this.player,
+      pointerWorldX: this.input.mouse.worldX,
+      pointerWorldY: this.input.mouse.worldY,
+      actionType: "place",
+      itemDefinition: placementItem,
+      world: this.world,
+      buildingSystem: this.buildingSystem
+    });
+    if (!target.ok) {
+      this.worldEditSystem.previewState = target;
+      return;
+    }
+    this.worldEditSystem.preview({
+      operation: placementItem.placement.type === "structure" ? "PLACE_STRUCTURE" : "PLACE_BLOCK",
+      target,
+      itemDefinition: placementItem
+    }, this.editContext());
+  }
+
+  editContext() {
+    return {
+      player: this.player,
+      world: this.world,
+      tick: this.clock.tick,
+      spawnItemDrop: (itemId, quantity, x, y) => this.spawnItemDrop(itemId, quantity, x, y)
+    };
+  }
+
+  spawnItemDrop(itemId, quantity, x, y) {
+    if (!this.world.island) return null;
+    const existing = this.world.island.itemDrops.find((drop) => !drop.destroyed && drop.itemId === itemId && Math.hypot(drop.x - x, drop.y - y) < CONFIG.TILE_SIZE);
+    if (existing) {
+      existing.quantity += quantity;
+      return existing;
+    }
+    const drop = new ItemDrop({
+      itemId,
+      quantity,
+      x,
+      y,
+      vx: ((this.clock.tick % 3) - 1) * 18,
+      vy: -20,
+      createdTick: this.clock.tick
+    });
+    this.world.island.itemDrops.push(drop);
+    return drop;
   }
 
   updateSailing(dt) {
@@ -360,17 +447,18 @@ export class Game {
     this.encounterTimer = encounterInterval();
   }
 
-  updateAnchoredPrompts() {
+  updateContextPrompts() {
+    if (this.state.current !== GAME_STATES.ISLAND_ANCHORED && this.state.current !== GAME_STATES.SAILING) return;
     const storage = this.raft.findNearbyStorage(this.player.x + this.player.width / 2, this.player.y + this.player.height / 2);
     if (storage) {
       this.contextPrompt = "E: open storage crate";
       return;
     }
-    if (this.isPlayerOnRaft()) this.contextPrompt = "E: leave this island and sail away";
+    if (this.state.current === GAME_STATES.ISLAND_ANCHORED && this.isPlayerOnRaft() && this.isPlayerNearSail()) this.contextPrompt = "E: leave this island and sail away";
   }
 
   interact() {
-    if (this.state.current !== GAME_STATES.ISLAND_ANCHORED) return;
+    if (this.state.current !== GAME_STATES.ISLAND_ANCHORED && this.state.current !== GAME_STATES.SAILING) return;
     const storage = this.raft.findNearbyStorage(this.player.x + this.player.width / 2, this.player.y + this.player.height / 2);
     if (storage) {
       this.openStorageId = storage.id;
@@ -378,90 +466,127 @@ export class Game {
       this.input.clearAll();
       return;
     }
-    if (this.isPlayerOnRaft()) this.showSailAwayDialog();
+    if (this.state.current === GAME_STATES.ISLAND_ANCHORED && this.isPlayerOnRaft() && this.isPlayerNearSail()) this.showSailAwayDialog();
   }
 
   handlePrimaryAction(command = this.input.mouse) {
     const worldX = command.worldX ?? this.input.mouse.worldX;
     const worldY = command.worldY ?? this.input.mouse.worldY;
-    if (this.buildingSystem.enabled) {
-      const result = this.buildingSystem.placeSelected(worldX, worldY, this.player.inventory);
-      if (result.ok) {
-        this.player.startAction("build");
-        this.saveManager.save(this);
-      }
-      return;
-    }
     const slot = this.player.hotbar.getSelectedHotbarItem();
-    if (!slot) return;
-    const item = getItemDefinition(slot.itemId);
+    const item = this.buildingSystem.enabled
+      ? getItemDefinition(this.buildingSystem.selectedStructure.itemId)
+      : slot ? getItemDefinition(slot.itemId) : null;
+    if (!item) return;
     if (item.category === "consumable" && item.heal) {
-      this.player.startAction("consume");
-      this.player.heal(item.heal);
-      this.player.hotbar.removeItem(item.id, 1);
+      this.startPlayerAction({
+        actionType: "consume",
+        intent: { item },
+        validate: () => this.player.items.hasItems([{ itemId: item.id, quantity: 1 }], INVENTORY_POLICIES.SELECTED_STACK)
+          ? { ok: true }
+          : { ok: false, code: "MISSING_ITEM", message: "Missing item." },
+        execute: () => {
+          this.player.heal(item.heal);
+          this.player.items.consumeSelected(1);
+          this.saveManager.markDirty("consume_item");
+          return { ok: true };
+        }
+      });
       return;
     }
-    if (item.tileId && this.state.current === GAME_STATES.ISLAND_ANCHORED) {
-      this.player.startAction("build");
-      if (this.tryPlaceTerrainTile(item, slot, worldX, worldY)) this.saveManager.save(this);
+    if (item.placement || this.buildingSystem.enabled) {
+      const target = this.targetResolver.resolve({
+        actor: this.player,
+        pointerWorldX: worldX,
+        pointerWorldY: worldY,
+        actionType: "place",
+        itemDefinition: item,
+        world: this.world,
+        buildingSystem: this.buildingSystem
+      });
+      const operation = item.placement?.type === "structure" ? "PLACE_STRUCTURE" : "PLACE_BLOCK";
+      this.startPlayerAction({
+        actionType: "place",
+        intent: { operation, target, itemDefinition: item },
+        validate: () => target.ok ? this.worldEditSystem.validate({ operation, target, itemDefinition: item }, this.editContext()) : target,
+        execute: () => {
+          const result = this.worldEditSystem.execute({ operation, target, itemDefinition: item }, this.editContext());
+          this.handleEditResult(result);
+          return result;
+        }
+      });
       return;
     }
-    if (item.toolType || item.category === "weapon") this.player.startAction(actionTypeForItem(item));
     if (this.state.current !== GAME_STATES.ISLAND_ANCHORED) return;
-    const interactionRange = CONFIG.PLAYER_INTERACTION_RANGE_TILES * CONFIG.TILE_SIZE;
     if (item.toolType === "spear") {
-      const enemy = nearestInRange(this.world.island.enemies.filter((enemy) => !enemy.destroyed), this.player, interactionRange);
-      if (enemy) enemy.hit(item.damage ?? 20, this.player.inventory);
+      const target = this.targetResolver.resolve({ actor: this.player, pointerWorldX: worldX, pointerWorldY: worldY, actionType: "spear", itemDefinition: item, world: this.world });
+      this.startPlayerAction({
+        actionType: "spear",
+        intent: { target, item },
+        validate: () => target,
+        execute: () => {
+          if (!target.ok) return target;
+          target.enemy.hit(item.damage ?? 20, this.player.inventory);
+          return { ok: true };
+        }
+      });
       return;
     }
-    const activeResources = this.world.island.resources.filter((node) => !node.destroyed);
-    const node = nearestInRange(activeResources, { center: () => ({ x: worldX, y: worldY }) }, 72)
-      ?? nearestInRange(activeResources, this.player, interactionRange);
-    if (node) {
-      const result = node.hit(item, this.player.inventory);
-      if (result.destroyed) {
-        this.world.island.removedResourceIds.add(node.id);
-        this.saveManager.save(this);
-      }
+    const resourceTarget = this.targetResolver.resolve({ actor: this.player, pointerWorldX: worldX, pointerWorldY: worldY, actionType: "harvest", itemDefinition: item, world: this.world });
+    if (resourceTarget.ok) {
+      this.startPlayerAction({
+        actionType: "harvest",
+        intent: { target: resourceTarget, item },
+        validate: () => resourceTarget,
+        execute: () => {
+          const result = resourceTarget.node.hit(item, null);
+          if (result.destroyed) {
+            this.world.island.removedResourceIds.add(resourceTarget.node.id);
+            for (const drop of result.drops ?? []) {
+              const addResult = this.player.items.addItem(drop.itemId, drop.quantity, INVENTORY_POLICIES.ALL_PLAYER_CONTAINERS);
+              if (addResult.remaining > 0) this.spawnItemDrop(drop.itemId, addResult.remaining, resourceTarget.node.x, resourceTarget.node.y);
+            }
+            this.saveManager.markDirty("resource_destroyed");
+          }
+          return result;
+        }
+      });
       return;
     }
-    if (this.tryDigTerrain(item, worldX, worldY)) this.saveManager.save(this);
+    if (item.toolType === "pickaxe") {
+      const target = this.targetResolver.resolve({ actor: this.player, pointerWorldX: worldX, pointerWorldY: worldY, actionType: "mine", itemDefinition: item, world: this.world });
+      this.startPlayerAction({
+        actionType: "mine",
+        intent: { target, tool: item },
+        validate: () => target.ok ? this.worldEditSystem.validate({ operation: "DAMAGE_TERRAIN", target, tool: item }, this.editContext()) : target,
+        execute: () => {
+          const result = this.worldEditSystem.execute({ operation: "DAMAGE_TERRAIN", target, tool: item }, this.editContext());
+          this.handleEditResult(result);
+          return result;
+        }
+      });
+    }
   }
 
-  tryDigTerrain(item, worldX = this.input.mouse.worldX, worldY = this.input.mouse.worldY) {
-    if (item.toolType !== "pickaxe") return false;
-    const target = this.findTargetTerrainTile(worldX, worldY);
-    if (!target) return false;
-    if (!this.isTileInInteractionRange(target.tileX, target.tileY)) return false;
-    return tryDigTile(this.world.tileMap, target.tileX, target.tileY, item, this.player.inventory).ok;
+  startPlayerAction({ actionType, intent, validate, execute }) {
+    const validation = validate();
+    if (!validation.ok) {
+      this.player.actionController.block(validation);
+      this.contextPrompt = validation.message ?? validation.reason ?? "";
+      return validation;
+    }
+    return this.player.actionController.start({
+      intent,
+      spec: getActionSpec(actionType),
+      execute
+    });
   }
 
-  tryPlaceTerrainTile(item, slot, worldX = this.input.mouse.worldX, worldY = this.input.mouse.worldY) {
-    const target = worldToTile(worldX, worldY);
-    if (!this.isTileInInteractionRange(target.tileX, target.tileY)) return false;
-    if (this.playerOverlapsTile(target.tileX, target.tileY)) return false;
-    const result = tryPlaceTile(this.world.tileMap, target.tileX, target.tileY, item.tileId);
-    if (!result.ok) return false;
-    this.player.hotbar.removeItem(slot.itemId, 1);
-    return true;
-  }
-
-  findTargetTerrainTile(worldX = this.input.mouse.worldX, worldY = this.input.mouse.worldY) {
-    const mouseTile = worldToTile(worldX, worldY);
-    const candidates = [
-      mouseTile,
-      { tileX: mouseTile.tileX, tileY: mouseTile.tileY + 1 }
-    ];
-    return candidates.find(({ tileX, tileY }) => this.world.tileMap.getTile(tileX, tileY) !== "air") ?? null;
-  }
-
-  isTileInInteractionRange(tileX, tileY) {
-    const tileCenter = {
-      x: (tileX + 0.5) * CONFIG.TILE_SIZE,
-      y: (tileY + 0.5) * CONFIG.TILE_SIZE
-    };
-    const playerCenter = this.player.center();
-    return Math.hypot(tileCenter.x - playerCenter.x, tileCenter.y - playerCenter.y) <= CONFIG.TERRAIN_DIG_RANGE_TILES * CONFIG.TILE_SIZE;
+  handleEditResult(result) {
+    if (!result.ok) {
+      this.contextPrompt = result.message ?? result.reason ?? "";
+      return;
+    }
+    if (result.saveDirty) this.saveManager.markDirty(result.operation);
   }
 
   playerOverlapsTile(tileX, tileY) {
@@ -478,10 +603,14 @@ export class Game {
   }
 
   craft(recipeId) {
+    this.enqueueCommand({ type: "craft", recipeId });
+  }
+
+  executeCraft(recipeId) {
     const recipe = getRecipe(recipeId);
     const hasStation = recipe.station ? this.raft.hasStation(recipe.station) : true;
-    const result = this.craftingSystem.craft(recipe, this.player.inventory, hasStation);
-    if (result.ok) this.saveManager.save(this);
+    const result = this.craftingSystem.craft(recipe, this.player.items, hasStation);
+    if (result.ok) this.saveManager.markDirty("craft");
     this.render();
   }
 
@@ -501,10 +630,10 @@ export class Game {
     const storage = this.raft.storage.get(this.openStorageId);
     if (!storage) return;
     for (const itemId of ["wood", "stone", "fibre", "rope", "crawler_chitin"]) {
-      const count = this.player.inventory.countItem(itemId);
+      const count = this.player.items.countItem(itemId, INVENTORY_POLICIES.ALL_PLAYER_CONTAINERS);
       if (count <= 0) continue;
       const accepted = storage.addItem(itemId, count);
-      this.player.inventory.removeItem(itemId, count - accepted.remaining);
+      this.player.items.removeItem(itemId, count - accepted.remaining, INVENTORY_POLICIES.ALL_PLAYER_CONTAINERS);
     }
     this.saveManager.save(this);
     this.render();
@@ -516,7 +645,7 @@ export class Game {
     const index = storage.slots.findIndex(Boolean);
     if (index === -1) return;
     const slot = storage.slots[index];
-    const result = this.player.inventory.addItem(slot.itemId, slot.quantity);
+    const result = this.player.items.addItem(slot.itemId, slot.quantity, INVENTORY_POLICIES.ALL_PLAYER_CONTAINERS);
     storage.removeItem(slot.itemId, slot.quantity - result.remaining);
     this.saveManager.save(this);
     this.render();
@@ -563,6 +692,7 @@ export class Game {
   sailAway() {
     this.dialog = null;
     this.closeInventory();
+    this.collectRaftAreaDrops();
     this.world.clearIsland();
     this.raft.setDock(8, CONFIG.SEA_LEVEL_TILE + CONFIG.RAFT_WATERLINE_TILE_OFFSET);
     const spawn = this.raft.getSpawnWorldPosition();
@@ -594,15 +724,37 @@ export class Game {
 
   dropDeathResources() {
     for (const itemId of ["wood", "stone", "fibre"]) {
-      const count = this.player.inventory.countItem(itemId);
+      const count = this.player.items.countItem(itemId, INVENTORY_POLICIES.ALL_PLAYER_CONTAINERS);
       const loss = Math.floor(count * CONFIG.BASIC_RESOURCE_DEATH_DROP_PERCENT);
-      if (loss > 0) this.player.inventory.removeItem(itemId, loss);
+      if (loss > 0) this.player.items.removeItem(itemId, loss, INVENTORY_POLICIES.ALL_PLAYER_CONTAINERS);
     }
   }
 
   isPlayerOnRaft() {
-    const grid = this.raft.worldToGrid(this.player.x + this.player.width / 2, this.player.y + this.player.height);
-    return grid.gridX >= -1 && grid.gridX <= 7 && grid.gridY >= -3 && grid.gridY <= 2;
+    const footProbe = {
+      x: this.player.x + this.player.width * 0.25,
+      y: this.player.y + this.player.height,
+      width: this.player.width * 0.5,
+      height: 2
+    };
+    return this.raft.querySolidRects(footProbe).some((rect) => rect.source === "raft" || rect.source === "raft_block");
+  }
+
+  isPlayerNearSail() {
+    const sail = this.raft.structures.find((structure) => structure.structureType === "sail");
+    if (!sail) return false;
+    const pos = this.raft.gridToWorld(sail.gridX, sail.gridY);
+    return Math.hypot(pos.x + CONFIG.TILE_SIZE / 2 - this.player.center().x, pos.y + CONFIG.TILE_SIZE - this.player.center().y) <= CONFIG.PLAYER_INTERACTION_RANGE_TILES * CONFIG.TILE_SIZE;
+  }
+
+  collectRaftAreaDrops() {
+    for (const drop of this.world.island?.itemDrops ?? []) {
+      const probe = { x: drop.x, y: drop.y, width: drop.width, height: drop.height };
+      if (!this.raft.querySolidRects(probe).length) continue;
+      const result = this.player.items.addItem(drop.itemId, drop.quantity, INVENTORY_POLICIES.ALL_PLAYER_CONTAINERS);
+      drop.quantity = result.remaining;
+      if (drop.quantity <= 0) drop.destroyed = true;
+    }
   }
 
   teleportPlayer(x, y) {

@@ -3,6 +3,7 @@ import { CONFIG } from "../src/config.js";
 import { generateIsland } from "../src/world/island-generator.js";
 import { compileIslandRecipe } from "../src/world/catalog/island-recipe-compiler.js";
 import { listIslandTemplates } from "../src/world/catalog/island-catalog.js";
+import { SHORE_ZONES } from "../src/world/generation/shoreline-planner.js";
 
 const templates = listIslandTemplates({ naturalOnly: true });
 const reports = [];
@@ -29,6 +30,7 @@ for (const template of templates) {
       assert.equal(report.oreCounts.iron_ore > 0, true, `${template.id} ${seed} ${size} missing iron`);
       assert.equal(report.edgeProfiles.arrival.id, "sandy_beach");
       assert.equal(report.edgeProfiles.far.id, "sandy_beach");
+      validateShorelineMatrix(island, template.id, seed, size);
       assert.equal(report.realizedThreat.enemyCount, report.enemyCount);
       assert.equal(report.enemySpawnByRegion.every((region) => region.remaining >= 0), true);
       assert.equal(report.biomeRegions.every((region) => region.endX > region.startX), true);
@@ -88,4 +90,42 @@ console.log(JSON.stringify({
 function percentile(values, p) {
   const index = Math.min(values.length - 1, Math.ceil(values.length * p) - 1);
   return values[index];
+}
+
+function validateShorelineMatrix(island, templateId, seed, size) {
+  const contextLabel = `${templateId} ${seed} ${size}`;
+  assert.equal(island.shorelineDatum.waterSurfaceWorldY, island.seaLevelTile * CONFIG.TILE_SIZE, `${contextLabel} water datum mismatch`);
+  assert.equal(island.shorelineDatum.shorelineSurfaceWorldY, island.seaLevelTile * CONFIG.TILE_SIZE, `${contextLabel} shoreline datum mismatch`);
+  assert.equal(island.shorelineDatum.raftDeckWorldY, island.seaLevelTile * CONFIG.TILE_SIZE, `${contextLabel} raft datum mismatch`);
+  for (const side of ["arrival", "far"]) {
+    const plan = island.shorelinePlans.find((entry) => entry.side === side);
+    assert.ok(plan, `${contextLabel} missing ${side} plan`);
+    const zones = new Set(plan.columns.map((column) => column.zone));
+    for (const zone of [SHORE_ZONES.SUBMERGED_SHELF, SHORE_ZONES.FORESHORE, SHORE_ZONES.DRY_BEACH, SHORE_ZONES.INLAND_TRANSITION]) assert.equal(zones.has(zone), true, `${contextLabel} ${side} missing ${zone}`);
+    const shoreline = plan.columns.find((column) => column.tileX === plan.shorelineX);
+    assert.equal(shoreline.surfaceTileY, island.seaLevelTile, `${contextLabel} ${side} shoreline not at waterline`);
+    const managed = plan.columns.filter((column) => column.zone !== SHORE_ZONES.DEEP_OFFSHORE).sort((a, b) => a.tileX - b.tileX);
+    for (let i = 1; i < managed.length; i += 1) assert.equal(Math.abs(managed[i].surfaceTileY - managed[i - 1].surfaceTileY) <= 1, true, `${contextLabel} ${side} steep shore step`);
+    const [minCap, maxCap] = island.recipe.edgeProfiles[side].profile.materials.capDepthRange;
+    for (const column of plan.columns) {
+      if (column.zone === SHORE_ZONES.SUBMERGED_SHELF) {
+        const exposed = island.tileMap.getTile(column.tileX, column.surfaceTileY);
+        assert.equal(exposed, "sand", `${contextLabel} ${side} shelf exposed ${exposed}`);
+        assert.notEqual(exposed, "grass", `${contextLabel} ${side} underwater grass`);
+        assert.notEqual(exposed, "dirt", `${contextLabel} ${side} underwater dirt`);
+      }
+      if (![SHORE_ZONES.SUBMERGED_SHELF, SHORE_ZONES.FORESHORE, SHORE_ZONES.DRY_BEACH].includes(column.zone)) continue;
+      const capDepth = contiguousTileDepth(island, column.tileX, column.surfaceTileY, "sand");
+      assert.equal(capDepth >= minCap && capDepth <= maxCap, true, `${contextLabel} ${side} sand cap ${capDepth}`);
+    }
+  }
+}
+
+function contiguousTileDepth(island, x, startY, tileId) {
+  let depth = 0;
+  for (let y = startY; y < island.height; y += 1) {
+    if (island.tileMap.getTile(x, y) !== tileId) break;
+    depth += 1;
+  }
+  return depth;
 }

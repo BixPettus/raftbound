@@ -41,6 +41,15 @@ export function createGenerationContext(definition, attempt = 0) {
     getBiomeAt,
     getBiomeBlendAt,
     getEdgeAt: (tileX) => edgeAt(definition.recipe, tileX, definition.width, profile.endMargin),
+    getShorelineColumn(tileX) {
+      return this.shorelineColumns?.get(tileX) ?? null;
+    },
+    getShoreZone(tileX) {
+      return this.getShorelineColumn(tileX)?.zone ?? "INTERIOR";
+    },
+    shorelinePlans: [],
+    shorelineColumns: new Map(),
+    shorelineDatum: null,
     tileMap: new TileMap(definition.width, definition.height, "air", definition.seaLevelTile),
     surfaceHeights: new Array(definition.width).fill(definition.seaLevelTile),
     depthBands: new Array(definition.width * definition.height).fill(0),
@@ -51,7 +60,7 @@ export function createGenerationContext(definition, attempt = 0) {
     enemies: [],
     pointsOfInterest: [],
     raftDockTile: { tileX: profile.startX - 6, tileY: definition.seaLevelTile + CONFIG.RAFT_WATERLINE_TILE_OFFSET },
-    playerSpawnTile: { tileX: profile.startX - 7, tileY: definition.seaLevelTile - 3 },
+    playerSpawnTile: { tileX: profile.startX - 7, tileY: definition.seaLevelTile - 2 },
     randomStreams: new RandomStreams(definition, attempt),
     diagnostics: { attempt, stageTimingsMs: {}, validationFailures: [] },
     startedAt: performanceNow()

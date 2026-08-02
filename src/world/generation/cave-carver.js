@@ -61,6 +61,8 @@ function cleanupCaves(context) {
 }
 
 function clearCaveCell(context, x, y) {
+  const shorelineColumn = context.getShorelineColumn(x);
+  if (shorelineColumn && y < shorelineColumn.surfaceTileY + shorelineColumn.capDepth + shorelineColumn.substrateDepth) return;
   context.tileMap.setTile(x, y, "air");
   context.caveMask[contextIndex(context, x, y)] = 1;
 }

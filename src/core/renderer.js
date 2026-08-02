@@ -4,6 +4,7 @@ import { getStructureDefinition } from "../raft/structure-registry.js";
 import { worldToScreen, worldToTile } from "../world/coordinates.js";
 import { GAME_STATES } from "./game-state.js";
 import { getItemDefinition } from "../items/item-registry.js";
+import { buildTileRenderPlan } from "./tile-render-plan.js";
 
 export class Renderer {
   constructor(canvas) {
@@ -142,12 +143,23 @@ function drawTiles(ctx, game) {
       const tileId = map.getTile(x, y);
       if (tileId === "air") continue;
       const tile = getTileDefinition(tileId);
+      const plan = buildTileRenderPlan(map, tileId, x, y, game.world.island?.seed ?? "open-water");
       const screen = worldToScreen(x * CONFIG.TILE_SIZE, y * CONFIG.TILE_SIZE, game.camera);
       ctx.fillStyle = tile.renderStyle.color;
       ctx.fillRect(screen.x, screen.y, CONFIG.TILE_SIZE, CONFIG.TILE_SIZE);
-      ctx.fillStyle = tile.renderStyle.edge ?? "rgba(0,0,0,0.2)";
-      ctx.fillRect(screen.x, screen.y, CONFIG.TILE_SIZE, 3);
-      if ((x + y) % 3 === 0) ctx.fillRect(screen.x + 9, screen.y + 17, 5, 3);
+      if (plan.drawTopBoundary) {
+        ctx.fillStyle = plan.subtleTopBoundary ? "rgba(0,0,0,0.12)" : tile.renderStyle.edge ?? "rgba(0,0,0,0.2)";
+        ctx.fillRect(screen.x, screen.y, CONFIG.TILE_SIZE, plan.subtleTopBoundary ? 1 : 2);
+      }
+      if (plan.drawLeftBoundary || plan.drawRightBoundary) {
+        ctx.fillStyle = "rgba(0,0,0,0.08)";
+        if (plan.drawLeftBoundary) ctx.fillRect(screen.x, screen.y + 3, 1, CONFIG.TILE_SIZE - 3);
+        if (plan.drawRightBoundary) ctx.fillRect(screen.x + CONFIG.TILE_SIZE - 1, screen.y + 3, 1, CONFIG.TILE_SIZE - 3);
+      }
+      if (plan.drawTexture) {
+        ctx.fillStyle = "rgba(0,0,0,0.08)";
+        ctx.fillRect(screen.x + plan.textureOffsetX, screen.y + plan.textureOffsetY, 3 + (plan.textureVariant % 2), 2);
+      }
     }
   }
 }

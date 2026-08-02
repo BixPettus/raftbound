@@ -22,12 +22,10 @@ export function generateSurface(context) {
     const mesa = mesaBands.find((band) => x >= band.startX && x <= band.endX);
     const terrace = surfaceProfile.surfaceVariation.terraceChance > 0 && ((x + context.diagnostics.attempt) % 11 === 0) ? 1 : 0;
     const target = Math.round(seaLevelTile - 1 - envelope * (7 * surfaceProfile.envelope.inlandHeightMultiplier + broad) - medium - detail - (mesa?.height ?? 0) + terrace);
-    const maxStep = x < startX + context.recipe.edgeProfiles.arrival.width ? 0 : 1;
+    const maxStep = 1;
     previous = clamp(target, previous - maxStep, previous + maxStep);
     context.surfaceHeights[x] = clamp(previous, seaLevelTile - 13, seaLevelTile - 1);
   }
-
-  enforceArrival(context);
 }
 
 function planMesaBands(context, random, startX, endX) {
@@ -45,15 +43,6 @@ function planMesaBands(context, random, startX, endX) {
     }
   }
   return bands;
-}
-
-function enforceArrival(context) {
-  const { seaLevelTile } = context.definition;
-  const startX = context.profile.startX;
-  const end = startX + context.recipe.edgeProfiles.arrival.width;
-  for (let x = startX; x <= end; x += 1) {
-    context.surfaceHeights[x] = seaLevelTile - 1;
-  }
 }
 
 function clamp(value, min, max) {

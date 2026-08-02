@@ -3,8 +3,8 @@ export const STRATA_PROFILES = [
     id: "temperate_standard",
     layers: [
       { maximumDepthRatio: 0.11, primaryTile: "dirt" },
-      { maximumDepthRatio: 0.26, primaryTile: "dirt", alternateTile: "stone", alternateModulo: 5 },
-      { maximumDepthRatio: 0.94, primaryTile: "stone" },
+      { maximumDepthRatio: 0.26, primaryTile: "dirt", alternateTile: "stone", alternateChance: 0.28 },
+      { maximumDepthRatio: 0.94, primaryTile: "stone", alternateTile: "dirt", alternateChance: 0.08, alternateMaximumDepthRatio: 0.44 },
       { maximumDepthRatio: 1, primaryTile: "bedrock" }
     ]
   },

@@ -1,0 +1,122 @@
+[
+  {
+    "seed": "accept-th-001",
+    "templateId": "temperate_haven",
+    "size": "small",
+    "recipeHash": "8efaad37",
+    "validationFailures": [],
+    "datum": {
+      "waterSurfaceTileY": 30,
+      "waterSurfaceWorldY": 960,
+      "shorelineSurfaceTileY": 30,
+      "shorelineSurfaceWorldY": 960,
+      "raftDeckWorldY": 960
+    },
+    "raftDeckY": 960,
+    "playerFeetY": 960,
+    "tileHashBefore": "3071eb49",
+    "tileHashAfter": "3071eb49",
+    "serializedSame": true,
+    "shelfIssues": [],
+    "slopeIssues": [],
+    "label": "temperate_haven-small",
+    "screenshotPath": "D:\\GAMEDEV\\reports\\wp5a-closeout-screenshots\\after-temperate_haven-small-accept-th-001.png",
+    "consoleMessages": []
+  },
+  {
+    "seed": "accept-tc-001",
+    "templateId": "temperate_caverns",
+    "size": "medium",
+    "recipeHash": "97d8d731",
+    "validationFailures": [],
+    "datum": {
+      "waterSurfaceTileY": 32,
+      "waterSurfaceWorldY": 1024,
+      "shorelineSurfaceTileY": 32,
+      "shorelineSurfaceWorldY": 1024,
+      "raftDeckWorldY": 1024
+    },
+    "raftDeckY": 1024,
+    "playerFeetY": 1024,
+    "tileHashBefore": "e5cd2607",
+    "tileHashAfter": "e5cd2607",
+    "serializedSame": true,
+    "shelfIssues": [],
+    "slopeIssues": [],
+    "label": "temperate_caverns-medium",
+    "screenshotPath": "D:\\GAMEDEV\\reports\\wp5a-closeout-screenshots\\after-temperate_caverns-medium-accept-tc-001.png",
+    "consoleMessages": []
+  },
+  {
+    "seed": "accept-dr-001",
+    "templateId": "desert_reach",
+    "size": "small",
+    "recipeHash": "fc342704",
+    "validationFailures": [],
+    "datum": {
+      "waterSurfaceTileY": 30,
+      "waterSurfaceWorldY": 960,
+      "shorelineSurfaceTileY": 30,
+      "shorelineSurfaceWorldY": 960,
+      "raftDeckWorldY": 960
+    },
+    "raftDeckY": 960,
+    "playerFeetY": 960,
+    "tileHashBefore": "16a4ee78",
+    "tileHashAfter": "16a4ee78",
+    "serializedSame": true,
+    "shelfIssues": [],
+    "slopeIssues": [],
+    "label": "desert_reach-small",
+    "screenshotPath": "D:\\GAMEDEV\\reports\\wp5a-closeout-screenshots\\after-desert_reach-small-accept-dr-001.png",
+    "consoleMessages": []
+  },
+  {
+    "seed": "accept-dc-001",
+    "templateId": "desert_caverns",
+    "size": "medium",
+    "recipeHash": "a0c0e789",
+    "validationFailures": [],
+    "datum": {
+      "waterSurfaceTileY": 32,
+      "waterSurfaceWorldY": 1024,
+      "shorelineSurfaceTileY": 32,
+      "shorelineSurfaceWorldY": 1024,
+      "raftDeckWorldY": 1024
+    },
+    "raftDeckY": 1024,
+    "playerFeetY": 1024,
+    "tileHashBefore": "460100b1",
+    "tileHashAfter": "460100b1",
+    "serializedSame": true,
+    "shelfIssues": [],
+    "slopeIssues": [],
+    "label": "desert_caverns-medium",
+    "screenshotPath": "D:\\GAMEDEV\\reports\\wp5a-closeout-screenshots\\after-desert_caverns-medium-accept-dc-001.png",
+    "consoleMessages": []
+  },
+  {
+    "seed": "accept-td-001",
+    "templateId": "temperate_desert_frontier",
+    "size": "medium",
+    "recipeHash": "21bc9a3e",
+    "validationFailures": [],
+    "datum": {
+      "waterSurfaceTileY": 32,
+      "waterSurfaceWorldY": 1024,
+      "shorelineSurfaceTileY": 32,
+      "shorelineSurfaceWorldY": 1024,
+      "raftDeckWorldY": 1024
+    },
+    "raftDeckY": 1024,
+    "playerFeetY": 1024,
+    "tileHashBefore": "67f9eb0b",
+    "tileHashAfter": "67f9eb0b",
+    "serializedSame": true,
+    "shelfIssues": [],
+    "slopeIssues": [],
+    "label": "temperate_desert_frontier-medium",
+    "screenshotPath": "D:\\GAMEDEV\\reports\\wp5a-closeout-screenshots\\after-temperate_desert_frontier-medium-accept-td-001.png",
+    "consoleMessages": []
+  }
+]

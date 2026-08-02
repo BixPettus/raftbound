@@ -24,6 +24,7 @@ export function buildGenerationReport(context, validation, { usedFallback = fals
     specialAttributes: context.recipe.specialAttributes,
     selectedAttempt: context.diagnostics.attempt,
     usedFallback,
+    failedAttempts: context.diagnostics.failedAttempts ?? [],
     width: context.definition.width,
     height: context.definition.height,
     seaLevelTile: context.definition.seaLevelTile,

@@ -1,9 +1,10 @@
-import { SandStalker, ShoreCrawler } from "../enemy.js";
+import { SandStalker, ShoreCrawler, VineStalker } from "../enemy.js";
 import { getRuntimeEnemyDefinition } from "./enemy-registry.js";
 
 const BEHAVIOR_TO_CLASS = Object.freeze({
   shore_crawler: ShoreCrawler,
-  sand_stalker: SandStalker
+  sand_stalker: SandStalker,
+  vine_stalker: VineStalker
 });
 
 export function createEnemy(enemyId, tileX, tileY, id = null) {

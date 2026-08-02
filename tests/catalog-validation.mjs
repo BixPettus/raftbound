@@ -57,11 +57,15 @@ function testRecipes() {
   const a = compileIslandRecipe({ templateId: "temperate_haven", seed: "recipe-same", size: "small", generationVersion: CONFIG.GENERATION_VERSION });
   const b = compileIslandRecipe({ templateId: "temperate_haven", seed: "recipe-same", size: "small", generationVersion: CONFIG.GENERATION_VERSION });
   assert.deepEqual(a, b);
-  assert.equal(a.catalogVersion, 2);
-  assert.equal(a.generationVersion, 5);
+  assert.equal(a.catalogVersion, 3);
+  assert.equal(a.generationVersion, 6);
   assert.equal(a.biomeRegions.length, 1);
   assert.equal(a.edges.arrival.id, "sandy_beach");
   assert.equal(a.edges.far.id, "sandy_beach");
+
+  const jungle = compileIslandRecipe({ templateId: "jungle_wilds", seed: "jungle-recipe", size: "medium", generationVersion: CONFIG.GENERATION_VERSION });
+  assert.equal(jungle.biomeRegions[0].biomeId, "jungle");
+  assert.equal(jungle.enemySpawnPlan.tableIds.includes("jungle_enemies"), true);
 }
 
 function testEnemies() {
@@ -84,6 +88,7 @@ function testEnemies() {
     assert.equal(entry.startX, region.startX);
     assert.equal(entry.endX, region.endX);
   }
+  assert.equal(mixed.enemySpawnPlan.entries.some((entry) => entry.enemyId === "vine_stalker" && entry.biomeId === "jungle"), true);
 }
 
 function testEdges() {

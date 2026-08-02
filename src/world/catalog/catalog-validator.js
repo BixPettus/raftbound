@@ -6,7 +6,7 @@ import { getResourceDefinition } from "../content/resource-registry.js";
 import { getResourceTable } from "../content/resource-table-registry.js";
 import { listEnvironmentalEffects } from "../content/environmental-effect-registry.js";
 
-const IMPLEMENTED_ENEMY_BEHAVIORS = new Set(["shore_crawler", "sand_stalker"]);
+const IMPLEMENTED_ENEMY_BEHAVIORS = new Set(["shore_crawler", "sand_stalker", "vine_stalker"]);
 
 export function validateIslandCatalog(catalog = islandCatalog) {
   const errors = [];

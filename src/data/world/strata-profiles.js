@@ -21,8 +21,10 @@ export const STRATA_PROFILES = [
   {
     id: "jungle_standard",
     layers: [
-      { maximumDepthRatio: 0.12, primaryTile: "dirt" },
-      { maximumDepthRatio: 0.94, primaryTile: "stone" },
+      { maximumDepthRatio: 0.10, primaryTile: "rich_soil" },
+      { maximumDepthRatio: 0.24, primaryTile: "rooted_soil", alternateTile: "rich_soil", alternateChance: 0.18, alternateMaximumDepthRatio: 0.24 },
+      { maximumDepthRatio: 0.62, primaryTile: "wet_stone", alternateTile: "rooted_soil", alternateChance: 0.12, alternateMaximumDepthRatio: 0.45 },
+      { maximumDepthRatio: 0.94, primaryTile: "stone", alternateTile: "wet_stone", alternateChance: 0.1, alternateMaximumDepthRatio: 0.72 },
       { maximumDepthRatio: 1, primaryTile: "bedrock" }
     ]
   },

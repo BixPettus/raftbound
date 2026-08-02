@@ -869,6 +869,7 @@ export class Game {
       if (node.destroyed || !node.hazardId) continue;
       if (!rectsOverlap(this.player.bounds, node.bounds)) continue;
       const hazard = getHazardDefinition(node.hazardId);
+      if (!hazard.damage) continue;
       if ((this.hazardCooldowns.get(hazard.id) ?? 0) > 0) continue;
       this.player.applyDamage({ amount: hazard.damage.amount, type: hazard.damage.type, grantsInvulnerability: false });
       this.hazardCooldowns.set(hazard.id, hazard.damage.cooldownSeconds);

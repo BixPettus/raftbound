@@ -4,6 +4,10 @@ export const ITEM_DEFINITIONS = [
   { id: "copper_ore", name: "Copper Ore", stackLimit: 99, category: "resource" },
   { id: "iron_ore", name: "Iron Ore", stackLimit: 99, category: "resource" },
   { id: "salt", name: "Salt", stackLimit: 99, category: "resource" },
+  { id: "hardwood", name: "Hardwood", stackLimit: 99, category: "material" },
+  { id: "vine", name: "Vine", stackLimit: 99, category: "material" },
+  { id: "resin", name: "Resin", stackLimit: 99, category: "material" },
+  { id: "medicinal_herb", name: "Medicinal Herb", stackLimit: 25, category: "consumable", heal: 18 },
   {
     id: "dirt_block",
     name: "Dirt",

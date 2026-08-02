@@ -2,7 +2,7 @@ import { CONFIG } from "../../config.js";
 import { contextIndex } from "./generation-context.js";
 
 const WALK_STEP_DOWN = 3;
-const FALL_SCAN = 18;
+const FALL_SCAN = 48;
 const JUMP_ARCS = [
   { dx: -5, peak: -4 },
   { dx: -4, peak: -4 },
@@ -109,6 +109,14 @@ function getTransitions(context, x, y) {
     }
   }
 
+  if (isCaveAir(context, x, y)) {
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (isCaveAir(context, nx, ny)) transitions.push({ x: nx, y: ny });
+    }
+  }
+
   return transitions;
 }
 
@@ -171,7 +179,14 @@ function isInWater(context, tileX, tileY) {
 }
 
 function canOccupyTraversalState(context, tileX, tileY) {
-  return canStand(context, tileX, tileY) || isInWater(context, tileX, tileY);
+  return canStand(context, tileX, tileY) || isInWater(context, tileX, tileY) || isCaveAir(context, tileX, tileY);
+}
+
+function isCaveAir(context, tileX, tileY) {
+  if (!context.caveMask) return false;
+  if (!context.tileMap.inBounds(tileX, tileY) || !canFit(context, tileX, tileY)) return false;
+  const index = contextIndex(context, tileX, tileY + colliderHeightTiles() - 1);
+  return context.caveMask[index] === 1;
 }
 
 function colliderWidthTiles() {

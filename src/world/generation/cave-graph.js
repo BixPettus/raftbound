@@ -25,7 +25,8 @@ function placeEntrances(context) {
   const minX = context.profile.startX + context.recipe.edgeProfiles.arrival.width + 12;
   const maxX = context.definition.width - context.profile.endMargin - context.recipe.edgeProfiles.far.width - 8;
   for (let i = 0; i < count; i += 1) {
-    const x = Math.round(minX + ((i + 0.45) / count) * (maxX - minX) + random.int(-8, 8));
+    const anchor = count === 1 ? minX + 2 : minX + ((i + 0.45) / count) * (maxX - minX);
+    const x = clamp(Math.round(anchor + random.int(-5, 5)), minX, maxX);
     const profile = getCaveProfile(context.getBiomeAt(x).caves.profileId);
     const isSinkhole = count > 1 && profile.entrances.styles.includes("sinkhole") && i === count - 1;
     const y = context.surfaceHeights[x] + (isSinkhole ? 5 : 2);
@@ -39,16 +40,47 @@ function placeChambers(context, type, count, minDepth, maxDepth, minRadiusX, max
   const nodes = [];
   const minX = context.profile.startX + context.recipe.edgeProfiles.arrival.width + 18;
   const maxX = context.definition.width - context.profile.endMargin - context.recipe.edgeProfiles.far.width - 12;
+  const depthRange = adjustedDepthRange(context, type, minDepth, maxDepth);
   for (let i = 0; i < count; i += 1) {
-    const x = random.int(minX, maxX);
+    const x = chamberX(context, type, i, count, minX, maxX, random);
     const surfaceY = context.surfaceHeights[x];
-    const y = Math.round(surfaceY + (context.definition.height - surfaceY) * random.range(minDepth, maxDepth));
+    const y = Math.round(surfaceY + (context.definition.height - surfaceY) * random.range(depthRange.min, depthRange.max));
     const caveProfile = getCaveProfile(context.getBiomeAt(x).caves.profileId);
     const rx = random.range(minRadiusX, maxRadiusX) * caveProfile.carving.tunnelWidthMultiplier;
     const ry = (type === "DEEP_CAVERN" ? random.range(7, 12) : random.range(4, 7)) * caveProfile.carving.tunnelHeightMultiplier;
     nodes.push(node(context, `${type.toLowerCase()}-${i}`, type, x, y, rx, ry, type.toLowerCase(), true));
   }
   return nodes;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function adjustedDepthRange(context, type, minDepth, maxDepth) {
+  if (context.definition.size !== "small") return { min: minDepth, max: maxDepth };
+  if (type === "UPPER_CHAMBER") return { min: Math.min(minDepth, 0.1), max: Math.min(maxDepth, 0.22) };
+  if (type === "MID_CHAMBER") return { min: Math.min(minDepth, 0.3), max: Math.min(maxDepth, 0.48) };
+  if (type === "DEEP_CAVERN") return { min: Math.min(minDepth, 0.58), max: Math.min(maxDepth, 0.72) };
+  return { min: minDepth, max: maxDepth };
+}
+
+function chamberX(context, type, index, count, minX, maxX, random) {
+  if (type === "SIDE_CHAMBER") return random.int(minX, maxX);
+  const bands = context.definition.size === "small" ? {
+    UPPER_CHAMBER: [0.28, 0.36],
+    MID_CHAMBER: [0.52, 0.72],
+    DEEP_CAVERN: [0.8, 0.94]
+  } : {
+    UPPER_CHAMBER: [0.04, 0.2],
+    MID_CHAMBER: [0.38, 0.7],
+    DEEP_CAVERN: [0.78, 0.94]
+  };
+  const [start, end] = bands[type] ?? [0.15, 0.85];
+  const t = count <= 1 ? (start + end) / 2 : start + ((index + 0.5) / count) * (end - start);
+  const span = maxX - minX;
+  const jitter = random.int(-Math.max(4, Math.round(span * 0.025)), Math.max(4, Math.round(span * 0.025)));
+  return clamp(Math.round(minX + span * t + jitter), minX, maxX);
 }
 
 function node(context, id, type, centerX, centerY, radiusX, radiusY, depthBand, required) {
@@ -64,7 +96,7 @@ function connect(context, from, to, type) {
     from: from.id,
     to: to.id,
     type,
-    widthProfile: (type === "MAIN_ROUTE" ? [2.1, 2.8] : [1.7, 2.3]).map((value) => value * caveProfile.carving.tunnelWidthMultiplier),
+    widthProfile: (type === "MAIN_ROUTE" ? [3.8, 4.8] : [2.2, 3.0]).map((value) => value * caveProfile.carving.tunnelWidthMultiplier),
     curvature: random.range(-0.8, 0.8),
     seed: `${from.id}->${to.id}:${type}`
   });

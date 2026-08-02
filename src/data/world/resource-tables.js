@@ -15,19 +15,23 @@ export const RESOURCE_TABLES = [
     densityBySize: { small: 0.8, medium: 1.05, large: 1.35 },
     entries: [
       { resourceId: "dry_shrub", weight: 7, baseCount: 6, guarantee: 2 },
-      { resourceId: "desert_cactus", weight: 5, baseCount: 5, guarantee: 2 },
       { resourceId: "surface_stone", weight: 4, baseCount: 5, guarantee: 1 },
+      { resourceId: "desert_cactus", weight: 5, baseCount: 5, guarantee: 2 },
       { resourceId: "salt_outcrop", weight: 2, baseCount: 2, guarantee: 1 }
     ]
   },
   {
     id: "jungle_surface",
-    requiredTags: ["wood", "stone", "fibre"],
-    densityBySize: { small: 1, medium: 1.2, large: 1.5 },
+    requiredTags: ["wood", "stone", "fibre", "healing", "jungle_specific"],
+    densityBySize: { small: 1.1, medium: 1.35, large: 1.65 },
     entries: [
-      { resourceId: "tree", weight: 8, baseCount: 8, guarantee: 1 },
-      { resourceId: "surface_stone", weight: 5, baseCount: 5, guarantee: 1 },
-      { resourceId: "fibre_plant", weight: 8, baseCount: 8, guarantee: 1 }
+      { resourceId: "hardwood_tree", weight: 8, baseCount: 7, guarantee: 2 },
+      { resourceId: "surface_stone", weight: 4, baseCount: 5, guarantee: 1 },
+      { resourceId: "vine_cluster", weight: 9, baseCount: 8, guarantee: 2 },
+      { resourceId: "medicinal_plant", weight: 4, baseCount: 3, guarantee: 1 },
+      { resourceId: "resin_node", weight: 3, baseCount: 3, guarantee: 1 },
+      { resourceId: "thorn_vine", weight: 2, baseCount: 2, guarantee: 1 },
+      { resourceId: "poison_bloom", weight: 1, baseCount: 1, guarantee: 1 }
     ]
   },
   {

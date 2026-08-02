@@ -1,8 +1,12 @@
 import { calculateTemplateDanger } from "./danger-calculator.js";
 import { compileIslandRecipe } from "./island-recipe-compiler.js";
 import { islandCatalog } from "./island-catalog.js";
+import { getCaveProfile, getOreProfile, getStrataProfile, getSurfaceProfile } from "../content/biome-profile-registry.js";
+import { getResourceDefinition } from "../content/resource-registry.js";
+import { getResourceTable } from "../content/resource-table-registry.js";
+import { listEnvironmentalEffects } from "../content/environmental-effect-registry.js";
 
-const IMPLEMENTED_ENEMY_BEHAVIORS = new Set(["shore_crawler"]);
+const IMPLEMENTED_ENEMY_BEHAVIORS = new Set(["shore_crawler", "sand_stalker"]);
 
 export function validateIslandCatalog(catalog = islandCatalog) {
   const errors = [];
@@ -15,6 +19,7 @@ export function validateIslandCatalog(catalog = islandCatalog) {
   validateUnique("enemy spawn table", catalog.enemySpawnTables, errors);
 
   for (const biome of catalog.biomes) validateBiome(biome, catalog, errors);
+  validateEnvironmentalEffects(catalog, errors);
   for (const table of catalog.enemySpawnTables) validateSpawnTable(table, catalog, errors);
   for (const template of catalog.templates) validateTemplate(template, catalog, errors);
   return { ok: errors.length === 0, errors };
@@ -82,6 +87,11 @@ function validateBiome(biome, catalog, errors) {
     if (value < 0 || value > 100) errors.push(`${path}.danger.${key} out of range`);
   }
   ref(path, "enemies.spawnTableId", biome.enemies.spawnTableId, catalog.enemySpawnTables, errors);
+  registryRef(path, "terrain.surfaceProfileId", () => getSurfaceProfile(biome.terrain.surfaceProfileId), errors);
+  registryRef(path, "terrain.strataProfileId", () => getStrataProfile(biome.terrain.strataProfileId), errors);
+  registryRef(path, "caves.profileId", () => getCaveProfile(biome.caves.profileId), errors);
+  registryRef(path, "ores.profileId", () => getOreProfile(biome.ores.profileId), errors);
+  registryRef(path, "resources.surfaceTableId", () => getResourceTable(biome.resources.surfaceTableId), errors);
 }
 
 function validateSpawnTable(table, catalog, errors) {
@@ -92,6 +102,23 @@ function validateSpawnTable(table, catalog, errors) {
     if (table.implemented && !enemy.implemented) errors.push(`${path} implemented table references placeholder enemy ${entry.enemyId}`);
     if (enemy?.implemented && !IMPLEMENTED_ENEMY_BEHAVIORS.has(enemy.behaviorId)) errors.push(`${path}.${entry.enemyId} uses unavailable behavior ${enemy.behaviorId}`);
     if (entry.weight <= 0 || entry.density <= 0) errors.push(`${path}.${entry.enemyId} weight and density must be positive`);
+  }
+}
+
+function validateEnvironmentalEffects(catalog, errors) {
+  for (const effect of listEnvironmentalEffects()) {
+    for (const biomeId of effect.activation.biomeIds ?? []) ref(`environmentalEffect ${effect.id}`, "activation.biomeIds", biomeId, catalog.biomes, errors);
+  }
+}
+
+function registryRef(path, field, read, errors) {
+  try {
+    const record = read();
+    if (field === "resources.surfaceTableId") {
+      for (const entry of record.entries) registryRef(path, `resource ${entry.resourceId}`, () => getResourceDefinition(entry.resourceId), errors);
+    }
+  } catch (error) {
+    errors.push(`${path}.${field} ${error.message}`);
   }
 }
 

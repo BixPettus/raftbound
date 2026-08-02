@@ -1,4 +1,4 @@
-import { CONFIG } from "../config.js?v=wp4-catalog-1";
+import { CONFIG } from "../config.js?v=wp5-desert-1";
 import { getTileDefinition } from "../world/tile-registry.js";
 import { getStructureDefinition } from "../raft/structure-registry.js";
 import { worldToScreen, worldToTile } from "../world/coordinates.js";
@@ -26,9 +26,9 @@ export class Renderer {
         height: game.camera.logicalHeight
       }
     };
-    const biome = game.currentBiome;
+    const palette = game.currentPalette ?? game.currentBiome?.palette;
     ctx.clearRect(0, 0, renderGame.canvas.width, renderGame.canvas.height);
-    drawSky(ctx, renderGame.canvas, biome?.palette?.sky ?? "#84d2ef");
+    drawSky(ctx, renderGame.canvas, palette?.sky ?? "#84d2ef");
     drawWater(ctx, renderGame);
     drawTiles(ctx, renderGame);
     drawRaft(ctx, renderGame);
@@ -229,13 +229,25 @@ function drawResources(ctx, game) {
       ctx.fillStyle = "#276b36";
       ctx.fillRect(screen.x + node.width * 0.08, screen.y + node.height * 0.28, node.width * 0.32, node.height * 0.16);
       ctx.fillRect(screen.x + node.width * 0.58, screen.y + node.height * 0.24, node.width * 0.34, node.height * 0.18);
-    } else if (node.type === "surface_stone") {
-      ctx.fillStyle = "#8b9297";
+    } else if (node.type === "surface_stone" || node.type === "salt_outcrop") {
+      ctx.fillStyle = node.type === "salt_outcrop" ? "#c9c3ad" : "#8b9297";
       ctx.fillRect(screen.x + 3, screen.y + 7, node.width - 6, node.height - 7);
-      ctx.fillStyle = "#62686e";
+      ctx.fillStyle = node.type === "salt_outcrop" ? "#f2ebd8" : "#62686e";
       ctx.fillRect(screen.x + node.width * 0.44, screen.y + 2, node.width * 0.36, 9);
-    } else {
-      ctx.fillStyle = "#5fc779";
+    } else if (node.type === "desert_cactus") {
+      ctx.fillStyle = "#3d8a59";
+      ctx.fillRect(screen.x + node.width * 0.36, screen.y, node.width * 0.28, node.height);
+      ctx.fillRect(screen.x + node.width * 0.18, screen.y + node.height * 0.36, node.width * 0.18, node.height * 0.32);
+      ctx.fillRect(screen.x + node.width * 0.62, screen.y + node.height * 0.22, node.width * 0.18, node.height * 0.38);
+      ctx.fillStyle = "#d9e8b7";
+      ctx.fillRect(screen.x + node.width * 0.46, screen.y + 8, 3, 3);
+    } else if (node.type === "dry_shrub") {
+      ctx.fillStyle = "#8a7042";
+      ctx.fillRect(screen.x + node.width * 0.18, screen.y + node.height * 0.58, node.width * 0.64, 7);
+      ctx.fillRect(screen.x + node.width * 0.35, screen.y + node.height * 0.24, 5, node.height * 0.56);
+      ctx.fillRect(screen.x + node.width * 0.55, screen.y + node.height * 0.1, 5, node.height * 0.7);
+      } else {
+        ctx.fillStyle = "#5fc779";
       ctx.fillRect(screen.x + node.width * 0.25, screen.y + 10, 6, node.height - 10);
       ctx.fillRect(screen.x + node.width * 0.62, screen.y, 6, node.height);
       ctx.fillRect(screen.x + node.width * 0.42, screen.y + node.height * 0.48, 14, 6);

@@ -1,4 +1,4 @@
-import { CONFIG } from "../config.js?v=wp4-catalog-1";
+import { CONFIG } from "../config.js?v=wp5-desert-1";
 import { Inventory } from "../items/inventory.js";
 import { getStructureDefinition } from "./structure-registry.js";
 import { RaftGrid } from "./raft-grid.js";

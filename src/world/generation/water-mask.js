@@ -1,4 +1,5 @@
 import { contextIndex } from "./generation-context.js";
+import { getCaveProfile } from "../content/biome-profile-registry.js";
 
 export function generateWaterMask(context) {
   const { width, height, seaLevelTile } = context.definition;
@@ -6,6 +7,7 @@ export function generateWaterMask(context) {
   const enqueue = (x, y) => {
     if (!context.tileMap.inBounds(x, y) || y < seaLevelTile || context.tileMap.isSolidTile(x, y)) return;
     const index = contextIndex(context, x, y);
+    if (context.caveMask[index] && getCaveProfile(context.getBiomeAt(x).caves.profileId).water.wetness <= 0.05) return;
     if (context.waterMask[index]) return;
     context.waterMask[index] = 1;
     queue.push([x, y]);

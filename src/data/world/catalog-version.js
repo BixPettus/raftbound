@@ -1,2 +1,2 @@
-export const ISLAND_CATALOG_VERSION = 1;
+export const ISLAND_CATALOG_VERSION = 2;
 

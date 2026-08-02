@@ -98,9 +98,13 @@ button:disabled {
   background: #e75d4f;
 }
 
-.oxygen > span {
-  background: #65b8ff;
-}
+  .oxygen > span {
+    background: #65b8ff;
+  }
+
+  .heat > span {
+    background: #f0a044;
+  }
 
 .prompt {
   position: fixed;

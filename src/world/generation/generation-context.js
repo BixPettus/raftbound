@@ -1,7 +1,7 @@
 import { CONFIG } from "../../config.js";
 import { TileMap } from "../tile-map.js";
 import { getBiomeDefinition } from "../biome-registry.js";
-import { biomeAt } from "../catalog/biome-region-planner.js";
+import { biomeAt, biomeBlendAt } from "../catalog/biome-region-planner.js";
 import { compileIslandRecipe } from "../catalog/island-recipe-compiler.js";
 import { createGenerationProfile } from "./generation-profile.js";
 import { RandomStreams } from "./random-streams.js";
@@ -32,12 +32,14 @@ export function createGenerationContext(definition, attempt = 0) {
   const profile = applyRecipeModifiers(createGenerationProfile(definition.biome, definition.size), definition.recipe?.generationModifiers ?? {});
   const primaryBiome = getBiomeDefinition(definition.biome);
   const getBiomeAt = (tileX) => getBiomeDefinition(biomeAt(definition.recipe.biomeRegions, tileX)?.biomeId ?? definition.biome);
+  const getBiomeBlendAt = (tileX) => biomeBlendAt(definition.recipe.biomeRegions, tileX);
   return {
     definition,
     profile,
     recipe: definition.recipe,
     biome: primaryBiome,
     getBiomeAt,
+    getBiomeBlendAt,
     getEdgeAt: (tileX) => edgeAt(definition.recipe, tileX, definition.width, profile.endMargin),
     tileMap: new TileMap(definition.width, definition.height, "air", definition.seaLevelTile),
     surfaceHeights: new Array(definition.width).fill(definition.seaLevelTile),

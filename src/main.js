@@ -1,5 +1,5 @@
-import { Game } from "./core/game.js?v=wp4-catalog-1";
-import { CONFIG } from "./config.js?v=wp4-catalog-1";
+import { Game } from "./core/game.js?v=wp5-desert-1";
+import { CONFIG } from "./config.js?v=wp5-desert-1";
 
 const canvas = document.getElementById("gameCanvas");
 const game = new Game(canvas, {

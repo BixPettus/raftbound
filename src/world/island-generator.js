@@ -1,4 +1,4 @@
-import { CONFIG } from "../config.js?v=wp4-catalog-1";
+import { CONFIG } from "../config.js?v=wp5-desert-1";
 import { ItemDrop } from "../entities/item-drop.js";
 import { generateIslandV4, createIslandDefinition } from "./generation/island-generator.js";
 import { compileIslandRecipe } from "./catalog/island-recipe-compiler.js";

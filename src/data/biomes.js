@@ -15,6 +15,7 @@ export const BIOME_DEFINITIONS = WORLD_BIOMES.map((biome) => {
       deep: biome.terrain.deepTile,
       water: "water"
     },
-    resources: [biome.resources.surfaceTableId, biome.resources.undergroundTableId]
+    resources: biome.resources,
+    resourceTableIds: [biome.resources.surfaceTableId, biome.resources.undergroundTableId]
   };
 });

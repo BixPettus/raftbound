@@ -6,9 +6,10 @@ import { listIslandTemplates } from "../src/world/catalog/island-catalog.js";
 
 const templates = listIslandTemplates({ naturalOnly: true });
 const reports = [];
-const representativeSeeds = Array.from({ length: 24 }, (_, index) => `matrix-${index.toString().padStart(3, "0")}`);
 
 for (const template of templates) {
+  const seedCount = template.id === "temperate_haven" || template.id === "temperate_caverns" ? 24 : 50;
+  const representativeSeeds = Array.from({ length: seedCount }, (_, index) => `matrix-${index.toString().padStart(3, "0")}`);
   for (const size of Object.keys(template.allowedSizes)) {
     for (const seedId of representativeSeeds) {
       const seed = `${template.id}-${size}-${seedId}`;
@@ -29,6 +30,9 @@ for (const template of templates) {
       assert.equal(report.edgeProfiles.arrival.id, "sandy_beach");
       assert.equal(report.edgeProfiles.far.id, "sandy_beach");
       assert.equal(report.realizedThreat.enemyCount, report.enemyCount);
+      assert.equal(report.enemySpawnByRegion.every((region) => region.remaining >= 0), true);
+      assert.equal(report.biomeRegions.every((region) => region.endX > region.startX), true);
+      if (template.biomeSlots.length === 1 && template.biomeSlots[0].biomeId === "desert") assert.equal(report.dryCaveRatio >= 0.9, true, `${template.id} ${seed} ${size} dry cave ratio ${report.dryCaveRatio}`);
       assert.equal(elapsed < 350, true, `${template.id} ${seed} ${size} exceeded hard ceiling: ${elapsed.toFixed(1)}ms`);
     }
   }
@@ -57,7 +61,28 @@ console.log(JSON.stringify({
   caveAirRatio: {
     min: Number(Math.min(...reports.map((report) => report.caveAirRatio)).toFixed(4)),
     max: Number(Math.max(...reports.map((report) => report.caveAirRatio)).toFixed(4))
-  }
+  },
+  dryCaveRatio: {
+    min: Number(Math.min(...reports.map((report) => report.dryCaveRatio)).toFixed(4)),
+    max: Number(Math.max(...reports.map((report) => report.dryCaveRatio)).toFixed(4))
+  },
+  biomeRegionCoverage: reports.reduce((counts, report) => {
+    for (const region of report.biomeRegions) counts[region.biomeId] = (counts[region.biomeId] ?? 0) + 1;
+    return counts;
+  }, {}),
+  resourceCountsByBiome: reports.reduce((counts, report) => {
+    counts[report.templateId] ??= {};
+    for (const [resourceId, count] of Object.entries(report.resourceCounts)) counts[report.templateId][resourceId] = (counts[report.templateId][resourceId] ?? 0) + count;
+    return counts;
+  }, {}),
+  enemyCountsByRegion: reports.reduce((summary, report) => {
+    for (const region of report.enemySpawnByRegion) {
+      const key = `${report.templateId}:${region.biomeId}`;
+      summary[key] ??= {};
+      for (const [enemyId, count] of Object.entries(region.countsByType)) summary[key][enemyId] = (summary[key][enemyId] ?? 0) + count;
+    }
+    return summary;
+  }, {})
 }, null, 2));
 
 function percentile(values, p) {

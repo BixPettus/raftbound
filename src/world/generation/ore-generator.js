@@ -3,7 +3,7 @@ import { contextIndex } from "./generation-context.js";
 export function placeOres(context) {
   const random = context.randomStreams.get("ores");
   for (const profile of context.profile.oreProfiles) {
-    const clusters = profile.clustersByIslandSize[context.definition.size] ?? 5;
+    const clusters = Math.max(1, Math.round((profile.clustersByIslandSize[context.definition.size] ?? 5) * (profile.clusterMultiplier ?? 1)));
     for (let i = 0; i < clusters; i += 1) {
       const center = pickOreCenter(context, random, profile);
       if (!center) continue;

@@ -30,6 +30,9 @@ import { buildTraversalGrid, isReachable } from "../src/world/generation/travers
 import { restorePendingEncounter, rollIslandEncounter } from "../src/world/catalog/encounter-roller.js";
 import { renderEncounterDebugMetadata } from "../src/ui/encounter-ui.js";
 import { ISLAND_CATALOG_VERSION } from "../src/data/world/catalog-version.js";
+import { EnvironmentEffectSystem } from "../src/world/environment/environment-effect-system.js";
+import { getResourceDefinition } from "../src/world/content/resource-registry.js";
+import { SandStalker } from "../src/entities/enemy.js";
 
 function testSeededRandomRepeatability() {
   const a = new SeededRandom("same-seed");
@@ -402,7 +405,7 @@ function testGenerationV4DeterminismAndDimensions() {
   const options = { seed: "v3-deterministic", biome: "temperate", size: "medium", generationVersion: CONFIG.GENERATION_VERSION };
   const a = generateIsland(options);
   const b = generateIsland(options);
-  assert.equal(a.generationVersion, 4);
+  assert.equal(a.generationVersion, 5);
   assert.equal(a.width, CONFIG.ISLAND_DIMENSIONS.medium.width);
   assert.equal(a.height, CONFIG.ISLAND_DIMENSIONS.medium.height);
   assert.equal(a.seaLevelTile, CONFIG.ISLAND_DIMENSIONS.medium.seaLevelTile);
@@ -632,6 +635,68 @@ function testTileDamageAccumulatesBeforeBreaking() {
 
 function testDropRangeUsesInclusiveMinMax() {
   assert.deepEqual(rollDropTable([{ itemId: "stone", min: 2, max: 4 }], { int: () => 4 }), [{ itemId: "stone", quantity: 4 }]);
+}
+
+function testDesertHeatExposureRates() {
+  const system = new EnvironmentEffectSystem();
+  const player = {
+    damageTaken: 0,
+    applyDamage({ amount }) {
+      this.damageTaken += amount;
+    }
+  };
+  const exposed = { biomeId: "desert", zone: "surface", inWater: false, underground: false, safeZone: false };
+  system.update(10, exposed, player);
+  assert.equal(system.exposureState.value("desert_heat"), 60);
+  assert.equal(player.damageTaken, 0);
+  system.update(10, exposed, player);
+  assert.equal(system.exposureState.value("desert_heat"), 100);
+  assert.equal(player.damageTaken > 0, true);
+  system.update(2, { ...exposed, underground: true, zone: "underground" }, player);
+  assert.equal(system.exposureState.value("desert_heat"), 76);
+  system.update(7, { ...exposed, inWater: true }, player);
+  assert.equal(system.exposureState.value("desert_heat"), 0);
+}
+
+function testDesertGenerationResourcesAndSpawns() {
+  const island = generateIsland({ seed: "desert-production", templateId: "desert_reach", size: "medium", generationVersion: CONFIG.GENERATION_VERSION });
+  assert.equal(island.biome, "desert");
+  assert.equal(island.generationReport.tileCounts.sand > 0, true);
+  assert.equal(island.generationReport.tileCounts.sandstone > 0, true);
+  assert.equal(island.generationReport.tileCounts.compacted_sandstone > 0, true);
+  assert.equal(island.generationReport.oreCounts.salt_rock > 0, true);
+  const tags = new Set(island.resources.flatMap((node) => getResourceDefinition(node.type).resourceTags ?? []));
+  for (const tag of ["wood", "stone", "fibre", "healing", "desert_specific"]) assert.equal(tags.has(tag), true, `missing ${tag}`);
+  assert.equal(island.enemies.some((enemy) => enemy.enemyType === "sand_stalker"), true);
+  assert.equal(island.enemies.every((enemy) => enemy.biomeId === "desert"), true);
+  assert.equal(island.generationReport.enemySpawnByRegion.every((region) => region.biomeId === "desert"), true);
+}
+
+function testMixedBiomeGenerationRegions() {
+  const island = generateIsland({ seed: "frontier-production", templateId: "temperate_desert_frontier", size: "medium", generationVersion: CONFIG.GENERATION_VERSION });
+  assert.equal(island.recipe.biomeRegions.length, 2);
+  assert.equal(island.recipe.biomeRegions.every((region) => region.endX > region.startX), true);
+  assert.equal(island.recipe.biomeRegions.every((region) => region.transitionWidth > 0), true);
+  assert.equal(island.generationReport.tileCounts.grass > 0, true);
+  assert.equal(island.generationReport.tileCounts.sand > 0, true);
+  const regionIds = new Set(island.generationReport.enemySpawnByRegion.map((region) => region.biomeId));
+  assert.equal(regionIds.has("temperate"), true);
+  assert.equal(regionIds.has("desert"), true);
+}
+
+function testSandStalkerDropsOverflowToWorld() {
+  const enemy = SandStalker.create(10, 10);
+  const inventory = new Inventory(1, [{ itemId: "wood", quantity: 99 }]);
+  const hotbar = new Hotbar(new Array(CONFIG.HOTBAR_SIZE).fill(null).map(() => ({ itemId: "wood", quantity: 99 })));
+  const playerItems = new PlayerInventory({ bag: inventory, hotbar });
+  const worldDrops = [];
+  enemy.hit(999, {
+    playerItems,
+    spawnItemDrop: (itemId, quantity, x, y) => worldDrops.push({ itemId, quantity, x, y })
+  });
+  assert.equal(enemy.destroyed, true);
+  assert.equal(worldDrops.length > 0, true);
+  assert.equal(worldDrops.every((drop) => drop.itemId === "crawler_chitin" && drop.quantity > 0), true);
 }
 
 function testIslandAndRaftDirtPlacementLifecycle() {
@@ -897,6 +962,10 @@ const tests = [
   testTerrainDigging,
   testTileDamageAccumulatesBeforeBreaking,
   testDropRangeUsesInclusiveMinMax,
+  testDesertHeatExposureRates,
+  testDesertGenerationResourcesAndSpawns,
+  testMixedBiomeGenerationRegions,
+  testSandStalkerDropsOverflowToWorld,
   testIslandAndRaftDirtPlacementLifecycle,
   testFailedRaftPlacementConsumesNothing,
   testRaftBoundsAndBlockPersistence,

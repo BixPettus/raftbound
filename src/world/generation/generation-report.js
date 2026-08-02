@@ -49,6 +49,7 @@ export function buildGenerationReport(context, validation, { usedFallback = fals
     enemySpawnBudgetUsed: context.diagnostics.enemySpawn?.used ?? 0,
     enemySpawnBudgetRemaining: context.diagnostics.enemySpawn?.remaining ?? 0,
     enemyCountsByType: context.diagnostics.enemySpawn?.countsByType ?? {},
+    enemySpawnByRegion: context.diagnostics.enemySpawn?.enemySpawnByRegion ?? [],
     enemyLevels: context.enemies.map((enemy) => enemy.level),
     realizedThreat: realizedThreat(context),
     stageTimingsMs: context.diagnostics.stageTimingsMs,

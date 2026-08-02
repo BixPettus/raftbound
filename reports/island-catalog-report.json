@@ -1,31 +1,40 @@
 {
-  "catalogVersion": 1,
-  "templateCount": 4,
-  "enabledCount": 3,
+  "catalogVersion": 2,
+  "templateCount": 7,
+  "enabledCount": 6,
   "placeholderCount": 2,
-  "validatedCount": 2,
+  "validatedCount": 5,
+  "implementedBiomeCount": 2,
+  "validatedBiomeCount": 2,
+  "templatesByBiome": {
+    "temperate": 3,
+    "desert": 4,
+    "volcanic": 1,
+    "jungle": 1
+  },
+  "mixedBiomeTemplateCount": 2,
   "brokenReferences": [],
   "dangerDistribution": {
     "Safe": 1,
-    "Low": 1,
-    "Extreme": 1,
-    "Moderate": 1
+    "Low": 3,
+    "Moderate": 2,
+    "Extreme": 1
   },
   "levelDistribution": {
     "1": 1,
-    "2": 1,
-    "3": 1,
+    "2": 2,
+    "3": 3,
     "5": 1
   },
   "sizeDistribution": {
-    "small": 2,
-    "medium": 4,
-    "large": 4
+    "small": 3,
+    "medium": 7,
+    "large": 7
   },
   "biomeCoverage": {
-    "temperate": 2,
+    "temperate": 3,
+    "desert": 4,
     "volcanic": 1,
-    "desert": 1,
     "jungle": 1
   },
   "enemyCoverage": [
@@ -36,8 +45,8 @@
     },
     {
       "id": "desert_enemies",
-      "implemented": false,
-      "entries": 1
+      "implemented": true,
+      "entries": 2
     },
     {
       "id": "jungle_enemies",
@@ -48,6 +57,274 @@
       "id": "volcanic_enemies",
       "implemented": false,
       "entries": 1
+    }
+  ],
+  "resourceDefinitionCoverage": [
+    {
+      "id": "tree",
+      "biomeIds": [
+        "temperate"
+      ],
+      "tags": [
+        "wood",
+        "food_chain"
+      ]
+    },
+    {
+      "id": "surface_stone",
+      "biomeIds": [
+        "temperate",
+        "desert"
+      ],
+      "tags": [
+        "stone"
+      ]
+    },
+    {
+      "id": "fibre_plant",
+      "biomeIds": [
+        "temperate"
+      ],
+      "tags": [
+        "fibre"
+      ]
+    },
+    {
+      "id": "desert_cactus",
+      "biomeIds": [
+        "desert"
+      ],
+      "tags": [
+        "fibre",
+        "healing",
+        "desert_specific"
+      ]
+    },
+    {
+      "id": "dry_shrub",
+      "biomeIds": [
+        "desert"
+      ],
+      "tags": [
+        "wood",
+        "fibre"
+      ]
+    },
+    {
+      "id": "salt_outcrop",
+      "biomeIds": [
+        "desert"
+      ],
+      "tags": [
+        "desert_specific",
+        "salt"
+      ]
+    }
+  ],
+  "resourceTableCoverage": [
+    {
+      "id": "temperate_surface",
+      "entries": 3,
+      "requiredTags": [
+        "wood",
+        "stone",
+        "fibre"
+      ]
+    },
+    {
+      "id": "desert_surface",
+      "entries": 4,
+      "requiredTags": [
+        "wood",
+        "stone",
+        "fibre",
+        "healing",
+        "desert_specific"
+      ]
+    },
+    {
+      "id": "jungle_surface",
+      "entries": 3,
+      "requiredTags": [
+        "wood",
+        "stone",
+        "fibre"
+      ]
+    },
+    {
+      "id": "volcanic_surface",
+      "entries": 1,
+      "requiredTags": [
+        "stone"
+      ]
+    }
+  ],
+  "surfaceProfileCoverage": [
+    {
+      "id": "temperate_rolling",
+      "landmarks": []
+    },
+    {
+      "id": "desert_dunes",
+      "landmarks": [
+        "mesa"
+      ]
+    },
+    {
+      "id": "jungle_dense",
+      "landmarks": []
+    },
+    {
+      "id": "volcanic_ridges",
+      "landmarks": []
+    }
+  ],
+  "strataProfileCoverage": [
+    {
+      "id": "temperate_standard",
+      "layers": 4
+    },
+    {
+      "id": "desert_standard",
+      "layers": 5
+    },
+    {
+      "id": "jungle_standard",
+      "layers": 3
+    },
+    {
+      "id": "volcanic_standard",
+      "layers": 2
+    }
+  ],
+  "caveProfileCoverage": [
+    {
+      "id": "temperate_caves",
+      "wetness": 0.25,
+      "entranceStyles": [
+        "rounded_worm"
+      ]
+    },
+    {
+      "id": "desert_caves",
+      "wetness": 0.04,
+      "entranceStyles": [
+        "wind_cut",
+        "sinkhole"
+      ]
+    },
+    {
+      "id": "jungle_caves",
+      "wetness": 0.4,
+      "entranceStyles": [
+        "rooted"
+      ]
+    },
+    {
+      "id": "volcanic_caves",
+      "wetness": 0.02,
+      "entranceStyles": [
+        "basalt_tube"
+      ]
+    }
+  ],
+  "oreProfileCoverage": [
+    {
+      "id": "temperate_ores",
+      "entries": [
+        "copper_ore",
+        "iron_ore"
+      ]
+    },
+    {
+      "id": "desert_ores",
+      "entries": [
+        "copper_ore",
+        "iron_ore",
+        "salt_rock"
+      ]
+    },
+    {
+      "id": "jungle_ores",
+      "entries": [
+        "copper_ore",
+        "iron_ore"
+      ]
+    },
+    {
+      "id": "volcanic_ores",
+      "entries": [
+        "copper_ore",
+        "iron_ore"
+      ]
+    }
+  ],
+  "environmentalEffectCoverage": [
+    {
+      "id": "desert_heat",
+      "biomeIds": [
+        "desert"
+      ],
+      "zones": [
+        "surface"
+      ]
+    }
+  ],
+  "enemyBehaviourCoverage": [
+    {
+      "id": "shore_crawler",
+      "implemented": true,
+      "behaviorId": "shore_crawler"
+    },
+    {
+      "id": "shore_crawler_alpha",
+      "implemented": true,
+      "behaviorId": "shore_crawler"
+    },
+    {
+      "id": "sand_stalker",
+      "implemented": true,
+      "behaviorId": "sand_stalker"
+    }
+  ],
+  "spawnTableRegionalValidation": [
+    {
+      "id": "temperate_enemies",
+      "regionalEntries": 0
+    },
+    {
+      "id": "desert_enemies",
+      "regionalEntries": 2
+    },
+    {
+      "id": "jungle_enemies",
+      "regionalEntries": 0
+    },
+    {
+      "id": "volcanic_enemies",
+      "regionalEntries": 0
+    }
+  ],
+  "biomeProductionStatus": [
+    {
+      "id": "temperate",
+      "implemented": true,
+      "status": "validated"
+    },
+    {
+      "id": "desert",
+      "implemented": true,
+      "status": "validated"
+    },
+    {
+      "id": "jungle",
+      "implemented": false,
+      "status": "placeholder"
+    },
+    {
+      "id": "volcanic",
+      "implemented": false,
+      "status": "placeholder"
     }
   ],
   "edgeProfileCoverage": [
@@ -78,7 +355,10 @@
   ],
   "naturalTemplateIds": [
     "temperate_haven",
-    "temperate_caverns"
+    "temperate_caverns",
+    "desert_reach",
+    "desert_caverns",
+    "temperate_desert_frontier"
   ],
   "suggestedValidationGrade": "validated"
 }

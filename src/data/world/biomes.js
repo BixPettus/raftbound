@@ -26,8 +26,8 @@ export const WORLD_BIOMES = [
   {
     id: "desert",
     name: "Desert",
-    implemented: false,
-    implementationStatus: "placeholder",
+    implemented: true,
+    implementationStatus: "validated",
     access: { minimumLevel: 2, requiredUnlocks: [] },
     danger: { environment: 44, hostility: 25, navigation: 30, scarcity: 55 },
     terrain: {

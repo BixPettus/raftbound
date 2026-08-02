@@ -57,8 +57,8 @@ function testRecipes() {
   const a = compileIslandRecipe({ templateId: "temperate_haven", seed: "recipe-same", size: "small", generationVersion: CONFIG.GENERATION_VERSION });
   const b = compileIslandRecipe({ templateId: "temperate_haven", seed: "recipe-same", size: "small", generationVersion: CONFIG.GENERATION_VERSION });
   assert.deepEqual(a, b);
-  assert.equal(a.catalogVersion, 1);
-  assert.equal(a.generationVersion, 4);
+  assert.equal(a.catalogVersion, 2);
+  assert.equal(a.generationVersion, 5);
   assert.equal(a.biomeRegions.length, 1);
   assert.equal(a.edges.arrival.id, "sandy_beach");
   assert.equal(a.edges.far.id, "sandy_beach");

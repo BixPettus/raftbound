@@ -3,7 +3,23 @@ export const EDGE_PROFILES = [
     id: "sandy_beach",
     name: "Sandy Beach",
     implemented: true,
-    surface: { widthRange: [10, 18], maximumSlope: 1, surfaceTile: "sand", subsurfaceTile: "sand", deepTransitionTile: "sandstone", transitionDepth: 5 },
+    surface: { widthRange: [26, 46], maximumSlope: 1, surfaceTile: "sand", subsurfaceTile: "sand", deepTransitionTile: "sandstone", transitionDepth: 5 },
+    geometry: {
+      offshoreShelfWidthRange: [10, 16],
+      foreshoreWidthRange: [4, 8],
+      dryBeachWidthRange: [14, 24],
+      inlandTransitionWidthRange: [8, 14],
+      offshoreDepthRange: [3, 5],
+      maximumColumnStep: 1,
+      dryBeachMaximumRise: 2
+    },
+    materials: {
+      surfaceTile: "sand",
+      capTile: "sand",
+      capDepthRange: [4, 8],
+      substrateTile: "sandstone",
+      deepSubstrateTile: "stone"
+    },
     generation: { flattenDockArea: true, excludeCaveEntrances: true, excludeEnemies: true, vegetationMultiplier: 0.15 },
     compatibility: { canBeArrivalEdge: true, canBeFarEdge: true, allowedBiomeTags: ["*"] }
   },

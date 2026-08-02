@@ -17,12 +17,15 @@ export class Hud {
     const selectedName = selected ? getItemDefinition(selected.itemId).name : "Empty";
     const island = this.game.world.island;
     const oxygenRelevant = player.oxygen < CONFIG.MAX_OXYGEN || player.inWater;
+    const heatValue = this.game.environmentEffects?.exposureState.value("desert_heat") ?? 0;
+    const heatRelevant = heatValue > 0.5 || this.game.currentBiome?.id === "desert";
     this.element.innerHTML = `
       <div class="hud-top">
         <div class="metric">Health<div class="bar health"><span style="width:${Math.round(player.health)}%"></span></div></div>
         ${oxygenRelevant ? `<div class="metric">Oxygen<div class="bar oxygen"><span style="width:${Math.round(player.oxygen)}%"></span></div></div>` : ""}
+        ${heatRelevant ? `<div class="metric">Heat<div class="bar heat"><span style="width:${Math.round(heatValue)}%"></span></div></div>` : ""}
         <div class="metric">State<br><strong>${this.game.state.current}</strong></div>
-        <div class="metric">Biome<br><strong>${island?.biome ?? "Open ocean"}</strong></div>
+        <div class="metric">Biome<br><strong>${this.game.currentBiome?.name ?? island?.biome ?? "Open ocean"}</strong></div>
         <div class="metric">Seed<br><strong>${island?.seed ?? "-"}</strong></div>
         ${island ? `<div class="metric">Template<br><strong>${island.templateId}</strong></div>` : ""}
         ${island ? `<div class="metric">Recipe<br><strong>${island.recipeHash}</strong></div>` : ""}

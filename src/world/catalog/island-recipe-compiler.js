@@ -79,6 +79,11 @@ function compileEnemySpawnPlan(template, size, generationModifiers, biomeRegions
       enemyId: entry.enemyId,
       weight: entry.weight,
       density: entry.density,
+      allowedRegion: entry.allowedRegion ?? slot.biomeId,
+      minimumPlayerLevel: entry.minimumPlayerLevel ?? 1,
+      minimumSpacingTiles: entry.minimumSpacingTiles,
+      safeZoneExclusionTiles: entry.safeZoneExclusionTiles,
+      requiresDryGround: entry.requiresDryGround === true,
       regionalBudget,
       countLimits: {
         minCount: entry.minCount,

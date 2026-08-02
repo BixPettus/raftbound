@@ -3,6 +3,7 @@ export const ITEM_DEFINITIONS = [
   { id: "stone", name: "Stone", stackLimit: 99, category: "resource" },
   { id: "copper_ore", name: "Copper Ore", stackLimit: 99, category: "resource" },
   { id: "iron_ore", name: "Iron Ore", stackLimit: 99, category: "resource" },
+  { id: "salt", name: "Salt", stackLimit: 99, category: "resource" },
   {
     id: "dirt_block",
     name: "Dirt",

@@ -1,3 +1,5 @@
+import { getCaveProfile } from "../content/biome-profile-registry.js";
+
 export function createCaveGraph(context) {
   const entrances = placeEntrances(context);
   const upper = placeChambers(context, "UPPER_CHAMBER", context.profile.caveTargets.upper, 0.14, 0.28, 5, 8);
@@ -24,8 +26,10 @@ function placeEntrances(context) {
   const maxX = context.definition.width - context.profile.endMargin - context.recipe.edgeProfiles.far.width - 8;
   for (let i = 0; i < count; i += 1) {
     const x = Math.round(minX + ((i + 0.45) / count) * (maxX - minX) + random.int(-8, 8));
-    const y = context.surfaceHeights[x] + 2;
-    nodes.push(node(context, `entrance-${i}`, "SURFACE_ENTRANCE", x, y, 2.4, 2.2, "surface", true));
+    const profile = getCaveProfile(context.getBiomeAt(x).caves.profileId);
+    const isSinkhole = count > 1 && profile.entrances.styles.includes("sinkhole") && i === count - 1;
+    const y = context.surfaceHeights[x] + (isSinkhole ? 5 : 2);
+    nodes.push(node(context, `entrance-${i}`, isSinkhole ? "SINKHOLE_ENTRANCE" : "SURFACE_ENTRANCE", x, y, isSinkhole ? 2.8 : 2.4, isSinkhole ? 4.8 : 2.2, "surface", true));
   }
   return nodes;
 }
@@ -39,8 +43,9 @@ function placeChambers(context, type, count, minDepth, maxDepth, minRadiusX, max
     const x = random.int(minX, maxX);
     const surfaceY = context.surfaceHeights[x];
     const y = Math.round(surfaceY + (context.definition.height - surfaceY) * random.range(minDepth, maxDepth));
-    const rx = random.range(minRadiusX, maxRadiusX);
-    const ry = type === "DEEP_CAVERN" ? random.range(7, 12) : random.range(4, 7);
+    const caveProfile = getCaveProfile(context.getBiomeAt(x).caves.profileId);
+    const rx = random.range(minRadiusX, maxRadiusX) * caveProfile.carving.tunnelWidthMultiplier;
+    const ry = (type === "DEEP_CAVERN" ? random.range(7, 12) : random.range(4, 7)) * caveProfile.carving.tunnelHeightMultiplier;
     nodes.push(node(context, `${type.toLowerCase()}-${i}`, type, x, y, rx, ry, type.toLowerCase(), true));
   }
   return nodes;
@@ -52,11 +57,14 @@ function node(context, id, type, centerX, centerY, radiusX, radiusY, depthBand, 
 
 function connect(context, from, to, type) {
   const random = context.randomStreams.get("cave-connectors");
+  const caveProfile = getCaveProfile(context.getBiomeAt(Math.round((from.centerX + to.centerX) / 2)).caves.profileId);
+  if (type === "BRANCH" && random.next() > caveProfile.graph.branchingMultiplier) return;
+  if (type === "LOOP" && random.next() > caveProfile.graph.loopMultiplier) return;
   context.caveGraph.edges.push({
     from: from.id,
     to: to.id,
     type,
-    widthProfile: type === "MAIN_ROUTE" ? [2.1, 2.8] : [1.7, 2.3],
+    widthProfile: (type === "MAIN_ROUTE" ? [2.1, 2.8] : [1.7, 2.3]).map((value) => value * caveProfile.carving.tunnelWidthMultiplier),
     curvature: random.range(-0.8, 0.8),
     seed: `${from.id}->${to.id}:${type}`
   });

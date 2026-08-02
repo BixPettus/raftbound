@@ -1,4 +1,4 @@
-import { CONFIG } from "../config.js?v=wp4-catalog-1";
+import { CONFIG } from "../config.js?v=wp5-desert-1";
 
 const STEP_HEIGHT = 4;
 const COLLISION_EPSILON = 0.001;

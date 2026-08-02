@@ -1,5 +1,5 @@
-import { CONFIG } from "../config.js?v=wp4-catalog-1";
-import { TileMap } from "./tile-map.js?v=wp4-catalog-1";
+import { CONFIG } from "../config.js?v=wp5-desert-1";
+import { TileMap } from "./tile-map.js?v=wp5-desert-1";
 import { WaterSystem } from "./water-system.js";
 
 export class World {

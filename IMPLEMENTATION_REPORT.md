@@ -265,3 +265,102 @@ Confirmed:
 - Multi-biome recipes compile and validate at catalog level, but only one-biome temperate recipes are matrix validated.
 - No graphical compass filter panel yet; options are exposed through development APIs.
 - WP5 should implement desert, jungle and volcanic terrain/resource/enemy production, additional edge behavior, biome transitions beyond schema support, and richer encounter filtering.
+
+## Work Package 5A Closeout
+
+Branch: `codex/desert-biome-production`
+
+PR: `https://github.com/BixPettus/raftbound/pull/2`
+
+Original base SHA: `8893707a890a67a140cebbad042d633ff0994700`
+
+Updated base SHA: `8893707a890a67a140cebbad042d633ff0994700`
+
+Pre-closeout head SHA: `f7dd5cbcde75e4b1e7129348aeb1d5a199e7f46d`
+
+Final closeout head SHA: recorded in the final Codex closeout response and PR metadata after push.
+
+Rebase result: already up to date with `origin/main`; no conflicts.
+
+Mergeability before implementation: GitHub reported PR #2 mergeable and clean.
+
+### Shoreline Root Cause
+
+- Arrival surface generation and arrival repair forced beach columns to `seaLevelTile - 1`, while water started at `seaLevelTile`.
+- Edge generation owned only dry columns, so shallow underwater cells before the beach fell back to Temperate grass/dirt strata.
+- Arrival repair rewrote a fixed sand/sandstone rectangle after caves, overriding generation shape.
+- Temperate strata used `(x + y) % alternateModulo`, producing visible periodic geology.
+- Rendering drew a top stripe on every solid tile, causing horizontal banding.
+
+### Waterline Convention
+
+- `waterSurfaceTileY = shorelineSurfaceTileY = seaLevelTile`.
+- `waterSurfaceWorldY = shorelineSurfaceWorldY = raftDeckWorldY = seaLevelTile * TILE_SIZE`.
+- The first shoreline solid tile occupies `tileY = seaLevelTile`, so its top exactly matches the water surface and raft walkable deck.
+- `SAVE_VERSION` remains `3`, `GENERATION_VERSION` remains `5`, and `ISLAND_CATALOG_VERSION` remains `2`.
+
+### Changes
+
+- Added `src/world/generation/shoreline-planner.js` with arrival and far shoreline plans containing deep offshore, submerged shelf, foreshore, dry beach, and inland transition zones.
+- Expanded `sandy_beach` into separate offshore shelf, foreshore, dry beach, inland transition, cap-depth, and substrate settings.
+- Replaced arrival material repair with clearance-only `enforceArrivalClearance()`.
+- Protected planned shoreline caps/substrate from cave carving so ocean-connected caves no longer expose air or non-sand shelf tiles.
+- Aligned raft visual deck and raft collision deck to the shoreline datum; raft artwork still extends below the deck through its tile body.
+- Added `strata-pattern` as an isolated named stream and replaced modulo strata with deterministic low-frequency clustered variation.
+- Added `src/core/tile-render-plan.js` for adjacency-aware top/side boundaries and deterministic non-periodic texture marks.
+- Added generation validation failures for waterline, raft datum, vertical shore walls, missing offshore shelf, underwater grass/dirt, invalid sand caps, cap discontinuity, and steep shore transitions.
+- Added geology diagnostics: `isolatedSecondaryTileRatio`, `boundaryDepthVariance`, `repeatedPatternScore`, and `materialCounts`.
+
+### Tests Added
+
+- Waterline and raft-deck datum assertions.
+- Arrival and far shoreline plan zone assertions.
+- Submerged shelf sand/no-grass/no-dirt assertions.
+- Sandstone-below-cap and configured cap-depth assertions.
+- Adjacent shore-height and transition-slope assertions.
+- Deterministic/non-modulo strata pattern assertions.
+- Renderer boundary and deterministic texture variant assertions.
+- Matrix-level shoreline validation across every generated island.
+
+### Verification
+
+- `npm test`: `57 checks passed`
+- `npm run test:catalog`: `catalog validation passed`
+- `npm run test:generation`: `494` islands, fallback count `0`, p95 `154.4 ms`, p99 `217.56 ms`, max `281.26 ms`
+- `npm run report:catalog`: `reports/island-catalog-report.json`
+- Browser warning/error log after favicon fix: none across all inspected islands.
+
+### Browser Acceptance
+
+Screenshots:
+
+- Before Temperate reference: `reports/wp5a-closeout-screenshots/before-temperate_haven-small-before-temperate-shoreline.png`
+- After Temperate reference: `reports/wp5a-closeout-screenshots/after-temperate_haven-small-accept-th-001.png`
+- After Desert reference: `reports/wp5a-closeout-screenshots/after-desert_reach-small-accept-dr-001.png`
+- Full browser summary: `reports/wp5a-closeout-screenshots/browser-acceptance-summary.json`
+
+Inspected:
+
+- `temperate_haven`, small, seed `accept-th-001`, recipe hash `8efaad37`
+- `temperate_caverns`, medium, seed `accept-tc-001`, recipe hash `97d8d731`
+- `desert_reach`, small, seed `accept-dr-001`, recipe hash `fc342704`
+- `desert_caverns`, medium, seed `accept-dc-001`, recipe hash `a0c0e789`
+- `temperate_desert_frontier`, medium, seed `accept-td-001`, recipe hash `21bc9a3e`
+
+Confirmed in browser:
+
+- Water surface touches shoreline top.
+- Raft deck and player feet align to shoreline top.
+- No one-tile step from raft/waterline to first shoreline tile.
+- Sand continues under shallow water.
+- No exposed grass or dirt on sandy submerged shelf.
+- Beach is broader and organically graded rather than a rectangular insertion.
+- Sand transitions into local geology over multiple columns.
+- Dirt/stone no longer show renderer-drawn horizontal grid bands.
+- Save/reload restored identical island hashes for every inspected island.
+- Existing caves remain covered by generation traversal validation.
+
+### Remaining Limitations
+
+- This closeout does not add final art, dynamic water, falling sand, new island archetypes, new enemies, Jungle production, or Volcanic production.
+- Shoreline visuals are still tile-art placeholders; the correction is geometric/material/rendering correctness for WP5A merge readiness.

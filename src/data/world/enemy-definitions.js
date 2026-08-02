@@ -28,14 +28,14 @@ export const ENEMY_DEFINITIONS = [
   {
     id: "sand_stalker",
     name: "Sand Stalker",
-    implemented: false,
+    implemented: true,
     level: 2,
     threatCost: 4,
-    behaviorId: "shore_crawler",
-    collider: { width: 30, height: 22 },
-    combat: { health: 80, contactDamage: 14, attackRange: 48, attackCooldownSeconds: 1.2 },
-    movement: { patrolSpeed: 50, chaseSpeed: 105, chaseRange: 245, patrolRadius: 104 },
-    drops: [{ itemId: "crawler_chitin", quantity: 1 }],
-    spawnConstraints: { minDistanceFromEdges: 30, minDistanceFromDock: 40, minimumSpacingTiles: 8, requiresSurface: true }
+    behaviorId: "sand_stalker",
+    collider: { width: 34, height: 24 },
+    combat: { health: 86, contactDamage: 16, lungeDamage: 18, attackRange: 54, attackCooldownSeconds: 1.35 },
+    movement: { hiddenSpeed: 0, emergeSeconds: 0.55, patrolSpeed: 36, chaseSpeed: 118, chaseRange: 260, lungeSpeed: 220, lungeSeconds: 0.22, patrolRadius: 116, retreatDistance: 180 },
+    drops: [{ itemId: "crawler_chitin", minimum: 1, maximum: 2, chance: 1 }],
+    spawnConstraints: { minDistanceFromEdges: 30, minDistanceFromDock: 46, minimumSpacingTiles: 10, requiresSurface: true, requiresDryGround: true, allowedRegion: "desert", safeZoneExclusionTiles: 12 }
   }
 ];

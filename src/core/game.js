@@ -1,17 +1,18 @@
-import { CONFIG, encounterDelay, encounterInterval } from "../config.js?v=wp4-catalog-1";
+import { CONFIG, encounterDelay, encounterInterval } from "../config.js?v=wp5-desert-1";
 import { Camera } from "./camera.js";
 import { GAME_STATES, GameStateController } from "./game-state.js";
 import { GameClock } from "./game-clock.js";
-import { Input } from "./input.js?v=wp4-catalog-1";
-import { Renderer } from "./renderer.js?v=wp4-catalog-1";
+import { Input } from "./input.js?v=wp5-desert-1";
+import { Renderer } from "./renderer.js?v=wp5-desert-1";
 import { EventBus } from "./event-bus.js";
-import { World } from "../world/world.js?v=wp4-catalog-1";
-import { generateIsland, restoreIsland, serializeIsland } from "../world/island-generator.js?v=wp4-catalog-1";
+import { World } from "../world/world.js?v=wp5-desert-1";
+import { generateIsland, restoreIsland, serializeIsland } from "../world/island-generator.js?v=wp5-desert-1";
 import { getBiomeDefinition } from "../world/biome-registry.js";
 import { restorePendingEncounter, rollIslandEncounter } from "../world/catalog/encounter-roller.js";
-import { Raft } from "../raft/raft.js?v=wp4-catalog-1";
+import { biomeBlendAt } from "../world/catalog/biome-region-planner.js";
+import { Raft } from "../raft/raft.js?v=wp5-desert-1";
 import { BuildingSystem } from "../raft/building-system.js";
-import { Player } from "../entities/player.js?v=wp4-catalog-1";
+import { Player } from "../entities/player.js?v=wp5-desert-1";
 import { distanceBetween } from "../entities/entity.js";
 import { getItemDefinition } from "../items/item-registry.js";
 import { getRecipe } from "../items/recipe-registry.js";
@@ -22,13 +23,16 @@ import { TargetResolver } from "../world/target-resolver.js";
 import { getActionSpec } from "../data/action-specs.js";
 import { ItemDrop } from "../entities/item-drop.js";
 import { SaveManager } from "../persistence/save-manager.js";
-import { Hud } from "../ui/hud.js?v=wp4-catalog-1";
+import { Hud } from "../ui/hud.js?v=wp5-desert-1";
 import { MenuUI } from "../ui/menu-ui.js";
-import { InventoryUI } from "../ui/inventory-ui.js?v=wp4-catalog-1";
-import { CraftingUI } from "../ui/crafting-ui.js?v=wp4-catalog-1";
+import { InventoryUI } from "../ui/inventory-ui.js?v=wp5-desert-1";
+import { CraftingUI } from "../ui/crafting-ui.js?v=wp5-desert-1";
 import { EncounterUI } from "../ui/encounter-ui.js";
 import { BuildUI } from "../ui/build-ui.js";
 import { DialogUI } from "../ui/dialog-ui.js";
+import { EnvironmentEffectSystem } from "../world/environment/environment-effect-system.js";
+import { createEnvironmentContext } from "../world/environment/environment-context.js";
+import { getHazardDefinition } from "../world/content/hazard-registry.js";
 
 export class Game {
   constructor(canvas, elements) {
@@ -65,6 +69,9 @@ export class Game {
     this.contextPrompt = "";
     this.saveError = null;
     this.currentBiome = null;
+    this.currentPalette = null;
+    this.environmentEffects = new EnvironmentEffectSystem();
+    this.hazardCooldowns = new Map();
     this.simulationCommands = [];
     this.lastFrameStepCount = 0;
     this.lastFrameAccumulator = 0;
@@ -158,6 +165,9 @@ export class Game {
     this.encounterTimer = encounterDelay();
     this.pendingEncounter = null;
     this.currentBiome = null;
+    this.currentPalette = null;
+    this.environmentEffects = new EnvironmentEffectSystem();
+    this.hazardCooldowns = new Map();
     this.inventoryOpen = false;
     this.dialog = null;
     this.state = new GameStateController(GAME_STATES.MAIN_MENU);
@@ -190,6 +200,9 @@ export class Game {
     this.worldEditSystem = new WorldEditSystem();
     this.targetResolver = new TargetResolver();
     this.currentBiome = getBiomeDefinition(biome);
+    this.currentPalette = this.currentBiome.palette;
+    this.environmentEffects = new EnvironmentEffectSystem();
+    this.hazardCooldowns = new Map();
     this.pendingEncounter = null;
     this.acceptedEncounter = null;
     this.inventoryOpen = false;
@@ -218,6 +231,9 @@ export class Game {
     else this.raft.setDock(8, CONFIG.SEA_LEVEL_TILE + CONFIG.RAFT_WATERLINE_TILE_OFFSET);
     this.world = new World({ raft: this.raft, island });
     this.currentBiome = island ? getBiomeDefinition(island.biome) : null;
+    this.currentPalette = this.currentBiome?.palette ?? null;
+    this.environmentEffects = new EnvironmentEffectSystem();
+    this.hazardCooldowns = new Map();
     const position = save.player.position ?? this.raft.getSpawnWorldPosition();
     this.player = new Player({
       x: position.x,
@@ -327,6 +343,8 @@ export class Game {
         waterSystem: this.world.waterSystem,
         collisionWorld: this.world.getCollisionWorld()
       });
+      this.updateLocalBiomeAndEnvironment(dt);
+      this.updateHazardContacts(dt);
     }
 
     if (this.state.current === GAME_STATES.ISLAND_ANCHORED) {
@@ -447,6 +465,9 @@ export class Game {
     this.player.vx = 0;
     this.player.vy = 0;
     this.currentBiome = getBiomeDefinition(island.biome);
+    this.currentPalette = this.currentBiome.palette;
+    this.environmentEffects = new EnvironmentEffectSystem();
+    this.hazardCooldowns = new Map();
     this.acceptedEncounter = null;
     this.state.transition(GAME_STATES.ISLAND_ANCHORED);
     this.saveManager.save(this);
@@ -595,7 +616,10 @@ export class Game {
         validate: () => target,
         execute: () => {
           if (!target.ok) return target;
-          target.enemy.hit(item.damage ?? 20, this.player.inventory);
+          target.enemy.hit(item.damage ?? 20, {
+            playerItems: this.player.items,
+            spawnItemDrop: (itemId, quantity, x, y) => this.spawnItemDrop(itemId, quantity, x, y)
+          });
           return { ok: true };
         }
       });
@@ -699,7 +723,7 @@ export class Game {
   depositBasicResources() {
     const storage = this.raft.storage.get(this.openStorageId);
     if (!storage) return;
-    for (const itemId of ["wood", "stone", "fibre", "sand_block", "rope", "crawler_chitin"]) {
+    for (const itemId of ["wood", "stone", "fibre", "sand_block", "salt", "rope", "crawler_chitin"]) {
       const count = this.player.items.countItem(itemId, INVENTORY_POLICIES.ALL_PLAYER_CONTAINERS);
       if (count <= 0) continue;
       const accepted = storage.addItem(itemId, count);
@@ -770,6 +794,9 @@ export class Game {
     this.player.vx = 0;
     this.player.vy = 0;
     this.currentBiome = null;
+    this.currentPalette = null;
+    this.environmentEffects = new EnvironmentEffectSystem();
+    this.hazardCooldowns = new Map();
     this.encounterTimer = encounterInterval();
     this.state.transition(GAME_STATES.SAILING);
     this.saveManager.save(this);
@@ -797,6 +824,54 @@ export class Game {
       const count = this.player.items.countItem(itemId, INVENTORY_POLICIES.ALL_PLAYER_CONTAINERS);
       const loss = Math.floor(count * CONFIG.BASIC_RESOURCE_DEATH_DROP_PERCENT);
       if (loss > 0) this.player.items.removeItem(itemId, loss, INVENTORY_POLICIES.ALL_PLAYER_CONTAINERS);
+    }
+  }
+
+  updateLocalBiomeAndEnvironment(dt) {
+    const localBiome = this.getLocalBiomeDefinition();
+    this.currentBiome = localBiome;
+    this.currentPalette = this.getLocalPalette();
+    if (!this.world.island) return;
+    this.environmentEffects.update(dt, createEnvironmentContext({
+      player: this.player,
+      world: this.world,
+      localBiome
+    }), this.player);
+  }
+
+  getLocalBiomeDefinition() {
+    const island = this.world.island;
+    if (!island) return null;
+    const tileX = Math.floor((this.player.x + this.player.width / 2) / CONFIG.TILE_SIZE);
+    const region = island.recipe?.biomeRegions?.find((entry) => tileX >= entry.startX && tileX < entry.endX);
+    return getBiomeDefinition(region?.biomeId ?? island.biome);
+  }
+
+  getLocalPalette() {
+    const island = this.world.island;
+    if (!island?.recipe?.biomeRegions) return this.currentBiome?.palette ?? null;
+    const tileX = Math.floor((this.player.x + this.player.width / 2) / CONFIG.TILE_SIZE);
+    const blend = biomeBlendAt(island.recipe.biomeRegions, tileX);
+    if (!blend || blend.primaryBiomeId === blend.secondaryBiomeId) return getBiomeDefinition(blend?.primaryBiomeId ?? island.biome).palette;
+    const a = getBiomeDefinition(blend.primaryBiomeId).palette;
+    const b = getBiomeDefinition(blend.secondaryBiomeId).palette;
+    return {
+      sky: mixHex(a.sky, b.sky, blend.blend),
+      water: mixHex(a.water, b.water, blend.blend),
+      tint: blend.blend < 0.5 ? a.tint : b.tint
+    };
+  }
+
+  updateHazardContacts(dt) {
+    if (!this.world.island) return;
+    for (const [hazardId, remaining] of this.hazardCooldowns) this.hazardCooldowns.set(hazardId, Math.max(0, remaining - dt));
+    for (const node of this.world.island.resources) {
+      if (node.destroyed || !node.hazardId) continue;
+      if (!rectsOverlap(this.player.bounds, node.bounds)) continue;
+      const hazard = getHazardDefinition(node.hazardId);
+      if ((this.hazardCooldowns.get(hazard.id) ?? 0) > 0) continue;
+      this.player.applyDamage({ amount: hazard.damage.amount, type: hazard.damage.type, grantsInvulnerability: false });
+      this.hazardCooldowns.set(hazard.id, hazard.damage.cooldownSeconds);
     }
   }
 
@@ -904,4 +979,22 @@ function moveStackBetween(source, fromIndex, target, toIndex) {
   source.slots[fromIndex] = targetSlot;
   target.slots[toIndex] = sourceSlot;
   return true;
+}
+
+function rectsOverlap(a, b) {
+  return a.x < b.x + b.width
+    && a.x + a.width > b.x
+    && a.y < b.y + b.height
+    && a.y + a.height > b.y;
+}
+
+function mixHex(a, b, t) {
+  const ca = parseHex(a);
+  const cb = parseHex(b);
+  return `#${[0, 1, 2].map((index) => Math.round(ca[index] + (cb[index] - ca[index]) * t).toString(16).padStart(2, "0")).join("")}`;
+}
+
+function parseHex(value) {
+  const hex = value.replace("#", "");
+  return [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16));
 }

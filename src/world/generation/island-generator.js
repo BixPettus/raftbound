@@ -47,11 +47,11 @@ function runAttempt(definition, attempt, fallback = false) {
   stageTiming(context, "strata", () => fillStrata(context));
   stageTiming(context, "caveGraph", () => createCaveGraph(context));
   stageTiming(context, "caves", () => carveCaves(context));
-  stageTiming(context, "arrivalRepair", () => repairArrival(context));
+  stageTiming(context, "arrivalClearance", () => enforceArrivalClearance(context));
   stageTiming(context, "water", () => generateWaterMask(context));
   stageTiming(context, "ores", () => placeOres(context));
   stageTiming(context, "features", () => placeFeatures(context));
-  if (fallback) repairArrival(context);
+  if (fallback) enforceArrivalClearance(context);
   return context;
 }
 
@@ -70,6 +70,8 @@ function finalizeIsland(context, validation, options) {
     caveGraph: context.caveGraph,
     caveMask: context.caveMask,
     waterMask: context.waterMask,
+    shorelinePlans: context.shorelinePlans,
+    shorelineDatum: context.shorelineDatum,
     resources: context.resources,
     enemies: context.enemies,
     itemDrops: [],
@@ -83,20 +85,19 @@ function finalizeIsland(context, validation, options) {
   return island;
 }
 
-function repairArrival(context) {
+function enforceArrivalClearance(context) {
   const startX = context.profile.startX;
   const sea = context.definition.seaLevelTile;
-  const edgeSurface = context.recipe.edgeProfiles.arrival.profile.surface;
   for (let x = startX - 2; x < startX; x += 1) {
     for (let y = sea - 8; y < sea + 1; y += 1) context.tileMap.setTile(x, y, "air");
   }
-  for (let x = startX; x <= startX + context.recipe.edgeProfiles.arrival.width; x += 1) {
-    for (let y = sea - 8; y < sea - 1; y += 1) context.tileMap.setTile(x, y, "air");
-    context.tileMap.setTile(x, sea - 1, edgeSurface.surfaceTile);
-    for (let y = sea; y < Math.min(context.definition.height - 3, sea + 8); y += 1) {
-      context.tileMap.setTile(x, y, y > sea + edgeSurface.transitionDepth ? edgeSurface.deepTransitionTile : edgeSurface.subsurfaceTile);
-    }
+  const safeEnd = startX + Math.min(8, context.recipe.edgeProfiles.arrival.width);
+  for (let x = startX; x <= safeEnd; x += 1) {
+    const surfaceY = context.surfaceHeights[x];
+    for (let y = Math.max(0, surfaceY - 8); y < surfaceY; y += 1) context.tileMap.setTile(x, y, "air");
   }
+  context.enemies = context.enemies.filter((enemy) => Math.floor(enemy.x / CONFIG.TILE_SIZE) > safeEnd + 2);
+  context.resources = context.resources.filter((resource) => resource.tileX > safeEnd + 2 || resource.tileY >= sea + 2);
 }
 
 function exposeDevelopmentHelpers(island) {

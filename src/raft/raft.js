@@ -1,4 +1,4 @@
-import { CONFIG } from "../config.js?v=wp4-catalog-1";
+import { CONFIG } from "../config.js?v=wp5-desert-1";
 import { Inventory } from "../items/inventory.js";
 import { getStructureDefinition } from "./structure-registry.js";
 import { RaftGrid } from "./raft-grid.js";
@@ -211,11 +211,11 @@ function primeStructureCounter(structures) {
 
 function raftDeckWorldY(dockTileY = CONFIG.SEA_LEVEL_TILE + CONFIG.RAFT_WATERLINE_TILE_OFFSET) {
   const seaLevelTile = dockTileY - CONFIG.RAFT_WATERLINE_TILE_OFFSET;
-  return (seaLevelTile - CONFIG.RAFT_SUBMERGED_TILES) * CONFIG.TILE_SIZE;
+  return seaLevelTile * CONFIG.TILE_SIZE;
 }
 
 function raftCollisionDeckY(visualDeckY) {
-  return visualDeckY - CONFIG.RAFT_SUBMERGED_TILES * CONFIG.TILE_SIZE;
+  return visualDeckY;
 }
 
 function intersects(a, b) {

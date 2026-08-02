@@ -3,7 +3,9 @@ import { SeededRandom } from "../seeded-random.js";
 export const GENERATION_STREAM_NAMES = Object.freeze([
   "surface",
   "surface-landmarks",
+  "shoreline-plan",
   "strata",
+  "strata-pattern",
   "cave-entrances",
   "cave-chambers",
   "cave-connectors",

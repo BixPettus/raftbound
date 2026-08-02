@@ -15,10 +15,13 @@ export const SURFACE_PROFILES = [
   },
   {
     id: "jungle_dense",
-    envelope: { inlandHeightMultiplier: 1, broadFrequency: 2.6, mediumFrequency: 9, detailFrequency: 14 },
-    slope: { normalMaximum: 1, cliffChance: 0, cliffMaximum: 1 },
-    landmarks: [],
-    surfaceVariation: { duneAmplitude: 0, terraceChance: 0 }
+    envelope: { inlandHeightMultiplier: 1.15, broadFrequency: 2.8, mediumFrequency: 9, detailFrequency: 17 },
+    slope: { normalMaximum: 1, cliffChance: 0.02, cliffMaximum: 1, terraceChance: 0.18, ridgeChance: 0.12 },
+    landmarks: [
+      { type: "jungle_ridge", probability: 0.35, minimumWidth: 12, maximumWidth: 24, heightRange: [2, 4] },
+      { type: "basin", probability: 0.3, minimumWidth: 10, maximumWidth: 18, heightRange: [1, 3] }
+    ],
+    surfaceVariation: { duneAmplitude: 1.4, terraceChance: 0.18 }
   },
   {
     id: "volcanic_ridges",

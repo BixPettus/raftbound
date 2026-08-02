@@ -67,7 +67,11 @@ function compileEnemySpawnPlan(template, size, generationModifiers, biomeRegions
     const table = getEnemySpawnTable(tableId);
     const baseBudget = (table.budgetBySize[size] ?? 0) * slot.coverage * (generationModifiers.enemyBudgetMultiplier ?? 1);
     const minThreatCost = table.entries.reduce((min, entry) => Math.min(min, getEnemyDefinition(entry.enemyId).threatCost), Infinity);
-    const regionalBudget = baseBudget > 0 ? Math.max(minThreatCost, Math.round(baseBudget)) : 0;
+    const requiredThreatBudget = table.entries.reduce((sum, entry) => {
+      const minCount = entry.minCount ?? 0;
+      return sum + minCount * getEnemyDefinition(entry.enemyId).threatCost;
+    }, 0);
+    const regionalBudget = baseBudget > 0 ? Math.max(minThreatCost, requiredThreatBudget, Math.round(baseBudget)) : 0;
     enemySpawnBudget += regionalBudget;
     entries.push(...table.entries.map((entry) => ({
       biomeId: slot.biomeId,

@@ -24,7 +24,10 @@ export function generateIslandV4(options) {
   for (let attempt = 0; attempt < CONFIG.GENERATION_MAX_ATTEMPTS; attempt += 1) {
     const context = runAttempt(definition, attempt);
     const validation = validateGeneratedIsland(context);
-    if (validation.ok) return finalizeIsland(context, validation, { elapsedMs: now() - start });
+    if (validation.ok) {
+      context.diagnostics.failedAttempts = failedAttempts;
+      return finalizeIsland(context, validation, { elapsedMs: now() - start });
+    }
     failedAttempts.push({ attempt, failures: validation.failures });
   }
   const context = runAttempt(definition, 0, true);

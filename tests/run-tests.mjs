@@ -32,7 +32,7 @@ import { renderEncounterDebugMetadata } from "../src/ui/encounter-ui.js";
 import { ISLAND_CATALOG_VERSION } from "../src/data/world/catalog-version.js";
 import { EnvironmentEffectSystem } from "../src/world/environment/environment-effect-system.js";
 import { getResourceDefinition } from "../src/world/content/resource-registry.js";
-import { SandStalker } from "../src/entities/enemy.js";
+import { SandStalker, VineStalker } from "../src/entities/enemy.js";
 import { buildTileRenderPlan } from "../src/core/tile-render-plan.js";
 import { SHORE_ZONES } from "../src/world/generation/shoreline-planner.js";
 
@@ -491,7 +491,7 @@ function testGenerationV4DeterminismAndDimensions() {
   const options = { seed: "v3-deterministic", biome: "temperate", size: "medium", generationVersion: CONFIG.GENERATION_VERSION };
   const a = generateIsland(options);
   const b = generateIsland(options);
-  assert.equal(a.generationVersion, 5);
+  assert.equal(a.generationVersion, 6);
   assert.equal(a.width, CONFIG.ISLAND_DIMENSIONS.medium.width);
   assert.equal(a.height, CONFIG.ISLAND_DIMENSIONS.medium.height);
   assert.equal(a.seaLevelTile, CONFIG.ISLAND_DIMENSIONS.medium.seaLevelTile);
@@ -753,6 +753,27 @@ function testDesertHeatExposureRates() {
   assert.equal(system.exposureState.value("desert_heat"), 0);
 }
 
+function testJungleToxinExposureRates() {
+  const system = new EnvironmentEffectSystem();
+  const player = {
+    damageTaken: 0,
+    applyDamage({ amount }) {
+      this.damageTaken += amount;
+    }
+  };
+  const nearPoison = { biomeId: "jungle", zone: "surface", inWater: false, underground: false, safeZone: false, activeEnvironmentalEffectIds: ["jungle_toxin"] };
+  system.update(2, nearPoison, player);
+  assert.equal(system.exposureState.value("jungle_toxin"), 56);
+  assert.equal(player.damageTaken, 0);
+  system.update(2, nearPoison, player);
+  assert.equal(system.exposureState.value("jungle_toxin"), 100);
+  assert.equal(player.damageTaken > 0, true);
+  system.update(5, { ...nearPoison, activeEnvironmentalEffectIds: [] }, player);
+  assert.equal(system.exposureState.value("jungle_toxin"), 50);
+  system.update(5, { ...nearPoison, biomeId: "temperate", activeEnvironmentalEffectIds: ["jungle_toxin"] }, player);
+  assert.equal(system.exposureState.value("jungle_toxin"), 0);
+}
+
 function testDesertGenerationResourcesAndSpawns() {
   const island = generateIsland({ seed: "desert-production", templateId: "desert_reach", size: "medium", generationVersion: CONFIG.GENERATION_VERSION });
   assert.equal(island.biome, "desert");
@@ -779,6 +800,34 @@ function testMixedBiomeGenerationRegions() {
   assert.equal(regionIds.has("desert"), true);
 }
 
+function testJungleGenerationResourcesHazardsAndSpawns() {
+  const island = generateIsland({ seed: "jungle-production", templateId: "jungle_wilds", size: "medium", generationVersion: CONFIG.GENERATION_VERSION });
+  assert.equal(island.biome, "jungle");
+  assert.equal(island.generationReport.tileCounts.jungle_grass > 0, true);
+  assert.equal(island.generationReport.tileCounts.rich_soil > 0, true);
+  assert.equal(island.generationReport.tileCounts.rooted_soil > 0, true);
+  assert.equal(island.generationReport.tileCounts.wet_stone > 0, true);
+  const tags = new Set(island.resources.flatMap((node) => getResourceDefinition(node.type).resourceTags ?? []));
+  for (const tag of ["wood", "stone", "fibre", "healing", "jungle_specific"]) assert.equal(tags.has(tag), true, `missing ${tag}`);
+  assert.equal(island.resources.some((node) => node.hazardId === "thorn_vine_contact" || node.hazardId === "poison_bloom_toxin"), true);
+  assert.equal(island.enemies.some((enemy) => enemy.enemyType === "vine_stalker"), true);
+  assert.equal(island.enemies.every((enemy) => enemy.biomeId === "jungle"), true);
+}
+
+function testDesertJungleFrontierRegionOwnership() {
+  const island = generateIsland({ seed: "desert-jungle-production", templateId: "desert_jungle_frontier", size: "medium", generationVersion: CONFIG.GENERATION_VERSION });
+  const regionIds = new Set(island.recipe.biomeRegions.map((region) => region.biomeId));
+  assert.equal(regionIds.has("desert"), true);
+  assert.equal(regionIds.has("jungle"), true);
+  assert.equal(island.enemies.some((enemy) => enemy.enemyType === "sand_stalker" && enemy.biomeId === "desert"), true);
+  assert.equal(island.enemies.some((enemy) => enemy.enemyType === "vine_stalker" && enemy.biomeId === "jungle"), true);
+  assert.equal(island.enemies.every((enemy) => enemy.enemyType !== "sand_stalker" || enemy.biomeId === "desert"), true);
+  assert.equal(island.enemies.every((enemy) => enemy.enemyType !== "vine_stalker" || enemy.biomeId === "jungle"), true);
+  const resourcesByRegion = island.resources.map((node) => ({ node, biomeId: island.recipe.biomeRegions.find((region) => node.tileX >= region.startX && node.tileX < region.endX)?.biomeId }));
+  assert.equal(resourcesByRegion.some(({ node, biomeId }) => node.type === "desert_cactus" && biomeId === "desert"), true);
+  assert.equal(resourcesByRegion.some(({ node, biomeId }) => node.type === "hardwood_tree" && biomeId === "jungle"), true);
+}
+
 function testSandStalkerDropsOverflowToWorld() {
   const enemy = SandStalker.create(10, 10);
   const inventory = new Inventory(1, [{ itemId: "wood", quantity: 99 }]);
@@ -792,6 +841,21 @@ function testSandStalkerDropsOverflowToWorld() {
   assert.equal(enemy.destroyed, true);
   assert.equal(worldDrops.length > 0, true);
   assert.equal(worldDrops.every((drop) => drop.itemId === "crawler_chitin" && drop.quantity > 0), true);
+}
+
+function testVineStalkerDropsOverflowToWorld() {
+  const enemy = VineStalker.create(10, 10);
+  const inventory = new Inventory(1, [{ itemId: "wood", quantity: 99 }]);
+  const hotbar = new Hotbar(new Array(CONFIG.HOTBAR_SIZE).fill(null).map(() => ({ itemId: "wood", quantity: 99 })));
+  const playerItems = new PlayerInventory({ bag: inventory, hotbar });
+  const worldDrops = [];
+  enemy.hit(999, {
+    playerItems,
+    spawnItemDrop: (itemId, quantity, x, y) => worldDrops.push({ itemId, quantity, x, y })
+  });
+  assert.equal(enemy.destroyed, true);
+  assert.equal(worldDrops.length > 0, true);
+  assert.equal(worldDrops.some((drop) => drop.itemId === "vine" && drop.quantity > 0), true);
 }
 
 function testIslandAndRaftDirtPlacementLifecycle() {
@@ -1062,9 +1126,13 @@ const tests = [
   testTileDamageAccumulatesBeforeBreaking,
   testDropRangeUsesInclusiveMinMax,
   testDesertHeatExposureRates,
+  testJungleToxinExposureRates,
   testDesertGenerationResourcesAndSpawns,
   testMixedBiomeGenerationRegions,
+  testJungleGenerationResourcesHazardsAndSpawns,
+  testDesertJungleFrontierRegionOwnership,
   testSandStalkerDropsOverflowToWorld,
+  testVineStalkerDropsOverflowToWorld,
   testIslandAndRaftDirtPlacementLifecycle,
   testFailedRaftPlacementConsumesNothing,
   testRaftBoundsAndBlockPersistence,

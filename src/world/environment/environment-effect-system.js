@@ -27,7 +27,8 @@ export class EnvironmentEffectSystem {
 
 function isActive(effect, context) {
   const activation = effect.activation;
-  if (!activation.biomeIds.includes(context.biomeId)) return false;
+  if (activation.source === "hazard" && !(context.activeEnvironmentalEffectIds ?? []).includes(effect.id)) return false;
+  if (activation.biomeIds?.length && !activation.biomeIds.includes(context.biomeId)) return false;
   if (activation.zones?.length && !activation.zones.includes(context.zone)) return false;
   if (activation.disabledInWater && context.inWater) return false;
   if (activation.disabledUnderground && context.underground) return false;

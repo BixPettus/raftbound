@@ -16,9 +16,9 @@ export const CAVE_PROFILES = [
   {
     id: "jungle_caves",
     entrances: { styles: ["rooted"], verticalBias: 0.1 },
-    graph: { branchingMultiplier: 1, loopMultiplier: 1, chamberMultiplier: 1, deepCavernMultiplier: 1 },
-    carving: { tunnelWidthMultiplier: 1, tunnelHeightMultiplier: 1, smoothingPasses: 1 },
-    water: { wetness: 0.4, undergroundPoolRate: 0.28 }
+    graph: { branchingMultiplier: 1.28, loopMultiplier: 1.18, chamberMultiplier: 1.16, deepCavernMultiplier: 0.95 },
+    carving: { tunnelWidthMultiplier: 1.08, tunnelHeightMultiplier: 0.95, smoothingPasses: 1 },
+    water: { wetness: 0.52, undergroundPoolRate: 0.34 }
   },
   {
     id: "volcanic_caves",

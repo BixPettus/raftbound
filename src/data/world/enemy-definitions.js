@@ -37,5 +37,22 @@ export const ENEMY_DEFINITIONS = [
     movement: { hiddenSpeed: 0, emergeSeconds: 0.55, patrolSpeed: 36, chaseSpeed: 118, chaseRange: 260, lungeSpeed: 220, lungeSeconds: 0.22, patrolRadius: 116, retreatDistance: 180 },
     drops: [{ itemId: "crawler_chitin", minimum: 1, maximum: 2, chance: 1 }],
     spawnConstraints: { minDistanceFromEdges: 30, minDistanceFromDock: 46, minimumSpacingTiles: 10, requiresSurface: true, requiresDryGround: true, allowedRegion: "desert", safeZoneExclusionTiles: 12 }
+  },
+  {
+    id: "vine_stalker",
+    name: "Vine Stalker",
+    implemented: true,
+    level: 3,
+    threatCost: 6,
+    behaviorId: "vine_stalker",
+    collider: { width: 34, height: 30 },
+    combat: { health: 108, contactDamage: 14, lungeDamage: 22, attackRange: 62, attackCooldownSeconds: 1.45 },
+    movement: { dormantSpeed: 0, watchSeconds: 0.35, patrolSpeed: 42, stalkSpeed: 105, detectionRange: 275, lungeSpeed: 260, lungeSeconds: 0.2, recoverySeconds: 0.55, patrolRadius: 128, retreatDistance: 210 },
+    drops: [
+      { itemId: "vine", minimum: 1, maximum: 2, chance: 1 },
+      { itemId: "resin", minimum: 1, maximum: 1, chance: 0.45 },
+      { itemId: "medicinal_herb", minimum: 1, maximum: 1, chance: 0.12 }
+    ],
+    spawnConstraints: { minDistanceFromEdges: 32, minDistanceFromDock: 50, minimumSpacingTiles: 11, requiresSurface: true, requiresDryGround: true, allowedRegion: "jungle", safeZoneExclusionTiles: 14 }
   }
 ];

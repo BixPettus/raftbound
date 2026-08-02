@@ -18,10 +18,10 @@ export function buildTileRenderPlan(map, tileId, tileX, tileY, seed = "") {
 }
 
 export function materialGroup(tileId) {
-  if (tileId === "grass" || tileId === "dirt") return "soil";
+  if (tileId === "grass" || tileId === "jungle_grass" || tileId === "dirt" || tileId === "rich_soil" || tileId === "rooted_soil") return "soil";
   if (tileId === "sand") return "sand";
   if (tileId === "sandstone" || tileId === "compacted_sandstone") return "sandstone";
-  if (tileId === "stone") return "rock";
+  if (tileId === "stone" || tileId === "wet_stone") return "rock";
   if (tileId === "copper_ore" || tileId === "iron_ore" || tileId === "salt_rock") return "ore";
   if (tileId === "bedrock") return "bedrock";
   if (tileId === "wood_foundation_tile" || tileId === "wood_wall_tile") return "constructed";
